@@ -328,6 +328,7 @@
 .detail-card { -fx-background-color: -fs-panel; -fx-background-radius: 20;
                -fx-border-color: -fs-card-line; -fx-border-radius: 20;
                -fx-effect: dropshadow(gaussian, -fs-card-shadow, 24, 0, 0, 8); }
+.detail-grip { -fx-cursor: h-resize; }
 .detail-head { -fx-padding: 14 16 12 16; -fx-border-color: -fs-line; -fx-border-width: 0 0 1 0; }
 .detail-name { -fx-font-family: "Outfit SemiBold"; }
 .cmp-card { -fx-background-color: -fs-line, -fs-raise; -fx-background-insets: 0, 1;

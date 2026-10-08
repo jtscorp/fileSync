@@ -56,6 +56,9 @@ public class ReviewView {
     /** The bottom edge of the changes card when the filter leaves it no row. */
     private record FilterEmptyRow() implements Row {}
 
+    /** The detail pane's width in review-view.fxml. */
+    private static final double DETAIL_MIN_WIDTH = 454;
+
     @FXML private ListView<Row> reviewList;
     @FXML private StackPane detailHost;
     @FXML private Label summaryLabel;
@@ -92,6 +95,27 @@ public class ReviewView {
         clip.heightProperty().bind(detail.heightProperty());
         detail.setClip(clip);
         detailHost.getChildren().add(detail);
+
+        // The strip on the panel's left edge that drags it wider. Built here, not in
+        // FXML, and the width is forgotten with the window.
+        Region grip = new Region();
+        grip.getStyleClass().add("detail-grip");
+        grip.setMaxWidth(8);
+        StackPane.setAlignment(grip, Pos.CENTER_LEFT);
+        grip.setOnMouseDragged(e ->
+                setDetailWidth(detailHost.localToScene(detailHost.getWidth(), 0).getX() - e.getSceneX()));
+        detailHost.getChildren().add(grip);
+        ((Region) detailHost.getParent()).widthProperty()
+                .addListener((obs, was, now) -> setDetailWidth(detailHost.getPrefWidth()));
+    }
+
+    /** Never narrower than the FXML's width, never more than half the screen: the list keeps its conflict choices. */
+    private void setDetailWidth(double wanted) {
+        double limit = Math.max(DETAIL_MIN_WIDTH, ((Region) detailHost.getParent()).getWidth() / 2);
+        double width = Math.max(DETAIL_MIN_WIDTH, Math.min(wanted, limit));
+        detailHost.setMinWidth(width);
+        detailHost.setPrefWidth(width);
+        detailHost.setMaxWidth(width);
     }
 
     void init(Listener listener, Map<String, Resolution> resolutions, Set<String> skippedChanges) {
