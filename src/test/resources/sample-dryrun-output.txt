@@ -1,0 +1,11 @@
+| newdir        Reconciling changes
+
+laptop         hdd                
+changed  <-?-> changed    conflict.docx  [] No default command [type '?' or F1 for help]
+changed  <-?-> changed    conflict.docx  [] changed  <-?-> changed    conflict.docx  []   changed  <-?-> changed    conflict.docx  
+  changed  ---->            changed.txt  
+  new dir  ---->            newdir  
+  new file ---->            newfile.txt  
+  props    ---->            propsdir  
+           <---- deleted    tobedeleted.txt  
+changed  <-?-> changed    conflict.docx  [] Terminated!

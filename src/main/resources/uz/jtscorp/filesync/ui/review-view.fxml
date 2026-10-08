@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+
+<!-- Step 3. The list's rows and the detail pane are built in ReviewView and DiffPanel. -->
+<BorderPane xmlns:fx="http://javafx.com/fxml" fx:controller="uz.jtscorp.filesync.ui.ReviewView">
+    <center>
+        <ListView fx:id="reviewList" styleClass="review-list"/>
+    </center>
+    <right>
+        <!-- 440 for the panel plus the 14 it floats off the window edge. -->
+        <StackPane fx:id="detailHost" styleClass="detail-host" minWidth="454" prefWidth="454" maxWidth="454">
+            <Region styleClass="detail-card"/>
+        </StackPane>
+    </right>
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="footer-bar">
+            <Button text="%review.back" styleClass="btn-ghost" onAction="#onBack"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label fx:id="summaryLabel" styleClass="muted"/>
+            <Label fx:id="gateLabel" styleClass="gate-text"/>
+            <Button fx:id="applyButton" text="%step.apply" styleClass="btn-primary" disable="true" onAction="#onApply"/>
+        </HBox>
+    </bottom>
+</BorderPane>

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<!--
+  The shell: sidebar, header with the stepper, and the four step views. Each step is its
+  own FXML with its own controller; MainView decides which one is on screen.
+-->
+<BorderPane xmlns:fx="http://javafx.com/fxml">
+    <left>
+        <VBox styleClass="sidebar" minWidth="236" prefWidth="236" maxWidth="236">
+            <HBox alignment="CENTER_LEFT" spacing="10" styleClass="sidebar-head">
+                <Label text="⇅" styleClass="logo"/>
+                <Label text="FileSync" styleClass="app-title"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Button fx:id="newProfileButton" text="+" styleClass="icon-button" onAction="#onNewProfile">
+                    <tooltip><Tooltip text="%main.newProfile"/></tooltip>
+                </Button>
+            </HBox>
+            <Label text="%main.profiles" styleClass="side-label"/>
+            <ListView fx:id="profileListView" styleClass="profile-list" VBox.vgrow="ALWAYS"/>
+            <VBox spacing="3" styleClass="sidebar-foot">
+                <HBox fx:id="hddStatus" spacing="7" alignment="CENTER_LEFT">
+                    <Region fx:id="hddDot" styleClass="dot"/>
+                    <Label fx:id="hddLabel" styleClass="muted, small"/>
+                </HBox>
+                <Label fx:id="toolsWarning" styleClass="warn-text, small, tools-link"/>
+                <Label fx:id="unisonVersionLabel" styleClass="mono-faint, tools-link"/>
+            </VBox>
+        </VBox>
+    </left>
+    <center>
+      <StackPane>
+        <BorderPane fx:id="mainPane">
+            <top>
+                <HBox alignment="CENTER_LEFT" styleClass="topbar">
+                    <Label fx:id="profileTitle" styleClass="profile-title" minWidth="160" prefWidth="160"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <HBox fx:id="stepper" alignment="CENTER" spacing="6">
+                        <Button fx:id="step1Button" text="%step.setup" styleClass="step" onAction="#onStep1">
+                            <graphic><Label styleClass="step-num"/></graphic>
+                        </Button>
+                        <Button fx:id="step2Button" text="%step.check" styleClass="step">
+                            <graphic><Label styleClass="step-num"/></graphic>
+                        </Button>
+                        <Button fx:id="step3Button" text="%step.review" styleClass="step" onAction="#onStep3">
+                            <graphic><Label styleClass="step-num"/></graphic>
+                        </Button>
+                        <Button fx:id="step4Button" text="%step.apply" styleClass="step" onAction="#onStep4">
+                            <graphic><Label styleClass="step-num"/></graphic>
+                        </Button>
+                    </HBox>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <!-- Balances the title's width so the stepper sits in the true centre. -->
+                    <Region minWidth="160" prefWidth="160"/>
+                </HBox>
+            </top>
+            <center>
+                <StackPane>
+                    <fx:include fx:id="setupView" source="setup-view.fxml"/>
+                    <fx:include fx:id="checkView" source="check-view.fxml"/>
+                    <fx:include fx:id="reviewView" source="review-view.fxml"/>
+                    <fx:include fx:id="applyView" source="apply-view.fxml"/>
+                </StackPane>
+            </center>
+        </BorderPane>
+        <!-- Over the steps, not among them: it is about the machine, not about a profile. -->
+        <fx:include fx:id="toolsView" source="tools-view.fxml"/>
+      </StackPane>
+    </center>
+</BorderPane>

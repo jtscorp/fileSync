@@ -1,0 +1,376 @@
+/*
+ * Colours are defined only as the -fs-* tokens below. Tints are a token's RGB with an
+ * alpha, because JavaFX CSS has no color-mix().
+ */
+.root {
+    -fs-bg: #f5f6f8; -fs-glow-a: #d6e4ff; -fs-glow-a-0: rgba(214,228,255,0);
+    -fs-glow-b: #fde6c8; -fs-glow-b-0: rgba(253,230,200,0);
+    -fs-glass: rgba(255,255,255,0.42); -fs-side: rgba(255,255,255,0.5);
+    -fs-panel: rgba(255,255,255,0.8); -fs-raise: #ffffff;
+    -fs-hover: rgba(60,131,246,0.07);
+    -fs-line: rgba(25,35,70,0.07); -fs-line2: rgba(25,35,70,0.13);
+    -fs-card-line: rgba(255,255,255,0.95); -fs-card-shadow: rgba(40,70,140,0.10); -fs-tick: #e2e5eb;
+    -fs-text: #211515; -fs-muted: #6b7280; -fs-faint: #9ca3af;
+    -fs-acc: #3c83f6; -fs-on-acc: #ffffff; -fs-on-acc-25: rgba(255,255,255,0.25);
+    -fs-knob: #ffffff; -fs-shadow: rgba(0,0,0,0.12); -fs-acc-text: #2563eb;
+    -fs-risk: #e5484d; -fs-warn: #f59f0a; -fs-ok: #16a249;
+    -fs-lap: #0b93ad; -fs-hdd: #7c4ddb;
+
+    -fs-acc-07: rgba(60,131,246,0.07); -fs-acc-08: rgba(60,131,246,0.08); -fs-acc-09: rgba(60,131,246,0.09);
+    -fs-acc-10: rgba(60,131,246,0.10); -fs-acc-14: rgba(60,131,246,0.14);
+    -fs-acc-16: rgba(60,131,246,0.16); -fs-acc-18: rgba(60,131,246,0.18);
+    -fs-acc-20: rgba(60,131,246,0.20); -fs-acc-35: rgba(60,131,246,0.35);
+    -fs-risk-07: rgba(229,72,77,0.07); -fs-risk-11: rgba(229,72,77,0.11);
+    -fs-risk-14: rgba(229,72,77,0.14); -fs-risk-30: rgba(229,72,77,0.30);
+    -fs-warn-09: rgba(245,159,10,0.09); -fs-warn-14: rgba(245,159,10,0.14);
+    -fs-warn-40: rgba(245,159,10,0.40); -fs-warn-42: rgba(245,159,10,0.42);
+    -fs-ok-13: rgba(22,162,73,0.13); -fs-ok-14: rgba(22,162,73,0.14);
+    -fs-ok-18: rgba(22,162,73,0.18);
+    -fs-risk-10: rgba(229,72,77,0.10); -fs-risk-45: rgba(229,72,77,0.45);
+    -fs-lap-07: rgba(11,147,173,0.07); -fs-lap-10: rgba(11,147,173,0.10);
+    -fs-lap-20: rgba(11,147,173,0.20); -fs-lap-40: rgba(11,147,173,0.40);
+    -fs-lap-45: rgba(11,147,173,0.45);
+    -fs-hdd-07: rgba(124,77,219,0.07); -fs-hdd-10: rgba(124,77,219,0.10);
+    -fs-hdd-20: rgba(124,77,219,0.20); -fs-hdd-40: rgba(124,77,219,0.40);
+    -fs-hdd-45: rgba(124,77,219,0.45);
+    -fs-faint-10: rgba(156,163,175,0.10); -fs-faint-45: rgba(156,163,175,0.45);
+
+    -fx-font-family: "Outfit";
+    -fx-font-size: 13px;
+    -fx-background-color: -fs-bg,
+        radial-gradient(center 100% 0%, radius 95%, -fs-glow-a 0%, -fs-glow-a-0 55%),
+        radial-gradient(center 0% 100%, radius 65%, -fs-glow-b 0%, -fs-glow-b-0 60%);
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+}
+
+/* Type. Each weight is its own family: JavaFX will not pick 500/600 within one. */
+.label { -fx-text-fill: -fs-text; }
+.w500 { -fx-font-family: "Outfit Medium"; }
+.w600 { -fx-font-family: "Outfit SemiBold"; }
+.mono { -fx-font-family: "IBM Plex Mono"; }
+.mono.w500 { -fx-font-family: "IBM Plex Mono Medm"; }
+.muted { -fx-text-fill: -fs-muted; }
+.faint { -fx-text-fill: -fs-faint; }
+.small { -fx-font-size: 12px; }
+.risk-text { -fx-text-fill: -fs-risk; }
+.lap-text { -fx-text-fill: -fs-lap; }
+.hdd-text { -fx-text-fill: -fs-hdd; }
+.page-title { -fx-font-family: "Outfit Medium"; -fx-font-size: 26px; }
+.card-title { -fx-font-family: "Outfit SemiBold"; }
+
+/* Buttons */
+.btn, .btn-primary, .btn-ghost, .icon-button, .chip-x, .suggest, .seg-opt, .toggle-btn, .step, .filter {
+    -fx-cursor: hand; -fx-text-fill: -fs-text; -fx-background-insets: 0; -fx-border-width: 0;
+}
+.btn { -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1;
+       -fx-background-radius: 19, 18; -fx-padding: 0 16 0 16; -fx-min-height: 38; -fx-pref-height: 38; }
+.btn:hover { -fx-background-color: -fs-line2, -fs-raise, -fs-hover; -fx-background-insets: 0, 1, 1;
+             -fx-background-radius: 19, 18, 18; }
+.btn-small { -fx-background-color: -fs-line, -fs-raise; -fx-background-radius: 6, 5;
+             -fx-min-height: 26; -fx-pref-height: 26; -fx-padding: 0 8 0 8; -fx-font-size: 12px; }
+.btn-small:hover { -fx-background-color: -fs-line, -fs-raise, -fs-hover; -fx-background-radius: 6, 5, 5; }
+.btn.on { -fx-background-color: -fs-acc, -fs-raise; }
+.btn-compact { -fx-background-radius: 7, 6; -fx-min-height: 30; -fx-pref-height: 30; -fx-padding: 0 12 0 12; }
+.btn-compact:hover { -fx-background-radius: 7, 6, 6; }
+.btn-primary { -fx-background-color: -fs-acc; -fx-background-radius: 20; -fx-text-fill: -fs-on-acc;
+               -fx-font-family: "Outfit Medium"; -fx-padding: 0 18 0 18;
+               -fx-min-height: 40; -fx-pref-height: 40;
+               -fx-effect: dropshadow(gaussian, -fs-acc-35, 18, 0, 0, 7); }
+.btn-primary:hover { -fx-background-color: derive(-fs-acc, 8%); }
+.btn-primary:disabled { -fx-opacity: 0.45; }
+.btn-ghost { -fx-background-color: transparent; -fx-background-radius: 8; -fx-text-fill: -fs-muted;
+             -fx-padding: 0 12 0 12; -fx-min-height: 40; -fx-pref-height: 40; }
+.btn-ghost:hover { -fx-background-color: -fs-hover; -fx-text-fill: -fs-text; }
+.bulk-btn { -fx-min-height: 28; -fx-pref-height: 28; -fx-padding: 0 12 0 12; -fx-font-size: 12px; }
+.btn.bulk-btn { -fx-background-radius: 14, 13; }
+.btn.bulk-btn:hover { -fx-background-radius: 14, 13, 13; }
+.btn-ghost.bulk-btn { -fx-background-radius: 14; -fx-padding: 0 9 0 9; -fx-font-size: 14px; }
+.icon-button { -fx-background-color: transparent; -fx-background-radius: 7; -fx-padding: 0;
+               -fx-min-width: 28; -fx-min-height: 28; -fx-pref-width: 28; -fx-pref-height: 28;
+               -fx-font-size: 18px; }
+.icon-button:hover { -fx-background-color: -fs-hover; }
+/* The language picker: the current flag and nothing else. */
+.lang-button { -fx-background-color: transparent; -fx-background-radius: 7; -fx-padding: 0;
+               -fx-min-height: 28; -fx-pref-height: 28; -fx-cursor: hand; }
+.lang-button:hover, .lang-button:showing { -fx-background-color: -fs-hover; }
+.lang-button > .label { -fx-padding: 0 2 0 4; }
+.lang-button > .arrow-button { -fx-padding: 0 4 0 2; }
+.lang-button > .arrow-button > .arrow { -fx-background-color: -fs-muted; }
+.lang-button .menu-item > .label { -fx-text-fill: -fs-text; -fx-padding: 0 8 0 4; }
+.lang-button .menu-item:focused { -fx-background-color: -fs-hover; }
+
+/* Inputs */
+.field { -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1;
+         -fx-background-radius: 12, 11; -fx-min-height: 38; -fx-pref-height: 38;
+         -fx-padding: 0 10 0 10; -fx-text-fill: -fs-text; -fx-prompt-text-fill: -fs-faint;
+         -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12.5px; }
+.field:focused { -fx-background-color: -fs-acc-20, -fs-acc, -fs-raise; -fx-background-insets: -3, 0, 1;
+                 -fx-background-radius: 15, 12, 11; }
+/* Each side keeps its own colour wherever it is named: the folder fields, a row's direction. */
+.field.lap { -fx-background-color: -fs-lap-40, -fs-raise, -fs-lap-07; -fx-background-insets: 0, 1, 1;
+             -fx-background-radius: 12, 11, 11; }
+.field.lap:focused { -fx-background-color: -fs-lap-20, -fs-lap, -fs-raise, -fs-lap-07;
+                     -fx-background-insets: -3, 0, 1, 1; -fx-background-radius: 15, 12, 11, 11; }
+.field.hdd { -fx-background-color: -fs-hdd-40, -fs-raise, -fs-hdd-07; -fx-background-insets: 0, 1, 1;
+             -fx-background-radius: 12, 11, 11; }
+.field.hdd:focused { -fx-background-color: -fs-hdd-20, -fs-hdd, -fs-raise, -fs-hdd-07;
+                     -fx-background-insets: -3, 0, 1, 1; -fx-background-radius: 15, 12, 11, 11; }
+.dot.side-dot { -fx-min-width: 8; -fx-min-height: 8; -fx-max-width: 8; -fx-max-height: 8; }
+
+/* Shell */
+.sidebar { -fx-background-color: -fs-glass; -fx-border-color: -fs-card-line; -fx-border-width: 0 1 0 0; }
+.sidebar-head { -fx-min-height: 64; -fx-pref-height: 64; -fx-padding: 0 10 0 16; }
+.logo { -fx-min-width: 36; -fx-min-height: 36; -fx-max-width: 36; -fx-max-height: 36;
+        -fx-background-radius: 18; -fx-background-color: -fs-acc; -fx-text-fill: -fs-on-acc;
+        -fx-alignment: center; -fx-font-size: 16px;
+        -fx-effect: dropshadow(gaussian, -fs-acc-35, 14, 0, 0, 5); }
+.app-title { -fx-font-family: "Outfit SemiBold"; -fx-font-size: 16px; }
+.side-label { -fx-font-size: 11.5px; -fx-text-fill: -fs-faint; -fx-padding: 10 16 4 16; }
+.profile-list, .review-list, .diff-list { -fx-background-color: transparent; -fx-background-insets: 0;
+                                          -fx-padding: 0; }
+.profile-list { -fx-padding: 0 8 0 8; }
+.profile-list .list-cell, .review-list .list-cell, .diff-list .list-cell {
+    -fx-background-color: transparent; -fx-padding: 0; -fx-text-fill: -fs-text; }
+/* Room around the selected card for its shadow, which a list cell would otherwise clip. */
+.profile-list .list-cell { -fx-padding: 1 4 1 4; }
+.profile-cell { -fx-padding: 10 12 10 12; -fx-background-radius: 14; -fx-cursor: hand; }
+.profile-cell:hover { -fx-background-color: -fs-hover; }
+.profile-cell.selected { -fx-background-color: -fs-panel;
+                         -fx-effect: dropshadow(gaussian, -fs-card-shadow, 8, 0, 0, 2); }
+.profile-name { -fx-font-family: "Outfit Medium"; }
+.dot { -fx-min-width: 7; -fx-min-height: 7; -fx-max-width: 7; -fx-max-height: 7; -fx-background-radius: 4; }
+.dot-ok { -fx-background-color: -fs-ok; }
+.dot-warn { -fx-background-color: -fs-warn; }
+.dot-acc { -fx-background-color: -fs-acc; }
+.dot-risk { -fx-background-color: -fs-risk; }
+.dot-lap { -fx-background-color: -fs-lap; }
+.dot-hdd { -fx-background-color: -fs-hdd; }
+.dot-faint { -fx-background-color: -fs-faint; }
+.sidebar-foot { -fx-border-color: -fs-line; -fx-border-width: 1 0 0 0; -fx-padding: 12 16 12 16; }
+.mono-faint { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11px; -fx-text-fill: -fs-faint; }
+.topbar { -fx-min-height: 64; -fx-pref-height: 64; -fx-padding: 0 16 0 24; }
+.profile-title { -fx-font-family: "Outfit Medium"; -fx-font-size: 20px; }
+.step { -fx-background-color: -fs-panel; -fx-background-radius: 18; -fx-min-height: 36; -fx-pref-height: 36;
+        -fx-padding: 0 14 0 6; -fx-graphic-text-gap: 7; -fx-text-fill: -fs-muted;
+        -fx-font-family: "Outfit Medium";
+        -fx-effect: dropshadow(gaussian, -fs-card-shadow, 14, 0, 0, 4); }
+.step:disabled { -fx-opacity: 0.55; }
+.step.active { -fx-background-color: -fs-acc; -fx-text-fill: -fs-on-acc; -fx-opacity: 1;
+               -fx-effect: dropshadow(gaussian, -fs-acc-35, 18, 0, 0, 7); }
+.step-num { -fx-min-width: 24; -fx-min-height: 24; -fx-max-width: 24; -fx-max-height: 24;
+            -fx-background-radius: 12; -fx-background-color: -fs-line; -fx-text-fill: -fs-muted;
+            -fx-alignment: center; -fx-font-size: 12px; -fx-font-family: "Outfit SemiBold"; }
+.step.done .step-num { -fx-background-color: -fs-acc-16; -fx-text-fill: -fs-acc-text; }
+.step.active .step-num { -fx-background-color: -fs-on-acc-25; -fx-text-fill: -fs-on-acc; }
+
+/* Pages */
+.page-scroll, .page-scroll > .viewport { -fx-background-color: transparent; }
+.page { -fx-padding: 16 28 24 28; }
+.card { -fx-background-color: -fs-panel; -fx-background-radius: 18;
+        -fx-border-color: -fs-card-line; -fx-border-radius: 18; -fx-padding: 18 20 18 20;
+        -fx-effect: dropshadow(gaussian, -fs-card-shadow, 24, 0, 0, 8); }
+.footer-bar { -fx-min-height: 68; -fx-pref-height: 68; -fx-padding: 0 24 0 24; -fx-background-color: -fs-glass;
+              -fx-border-color: -fs-card-line; -fx-border-width: 1 0 0 0; }
+
+/* Setup */
+.chip { -fx-background-color: -fs-acc-18, -fs-raise, -fs-acc-08; -fx-background-insets: 0, 1, 1;
+        -fx-background-radius: 13, 12, 12; -fx-min-height: 26; -fx-pref-height: 26; -fx-padding: 0 4 0 8; }
+.chip-kind { -fx-font-size: 11px; -fx-text-fill: -fs-faint; }
+.chip-body { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12px; }
+.chip-x { -fx-background-color: transparent; -fx-background-radius: 4; -fx-padding: 0; -fx-text-fill: -fs-muted;
+          -fx-min-width: 18; -fx-min-height: 18; -fx-pref-width: 18; -fx-pref-height: 18; }
+.chip-x:hover { -fx-background-color: -fs-hover; -fx-text-fill: -fs-text; }
+.suggest { -fx-background-color: transparent; -fx-border-color: -fs-line2; -fx-border-style: dashed;
+           -fx-border-width: 1; -fx-border-radius: 12; -fx-background-radius: 12; -fx-min-height: 24;
+           -fx-pref-height: 24; -fx-padding: 0 8 0 8; -fx-font-family: "IBM Plex Mono";
+           -fx-font-size: 11.5px; -fx-text-fill: -fs-muted; }
+.suggest:hover { -fx-border-color: -fs-acc; -fx-text-fill: -fs-acc-text; }
+.clickable-card { -fx-cursor: hand; }
+.switch { -fx-min-width: 36; -fx-max-width: 36; -fx-min-height: 20; -fx-max-height: 20;
+          -fx-background-radius: 10; -fx-background-color: -fs-line2; -fx-padding: 2; -fx-alignment: center-left; }
+.switch.on { -fx-background-color: -fs-acc; -fx-alignment: center-right; }
+.switch-knob { -fx-min-width: 16; -fx-max-width: 16; -fx-min-height: 16; -fx-max-height: 16;
+               -fx-background-radius: 8; -fx-background-color: -fs-knob; }
+
+/* Check + Apply progress */
+.progress-thin { -fx-min-height: 8; -fx-pref-height: 8; -fx-max-height: 8; }
+.progress-thin .track { -fx-background-color: -fs-line; -fx-background-radius: 4; -fx-background-insets: 0; }
+.progress-thin .bar { -fx-background-color: -fs-acc; -fx-background-radius: 4; -fx-background-insets: 0;
+                      -fx-padding: 4; }
+.task-card { -fx-padding: 6; }
+.task-icon { -fx-min-width: 28; -fx-min-height: 28; -fx-max-width: 28; -fx-max-height: 28;
+             -fx-background-radius: 14; -fx-background-color: -fs-line; -fx-text-fill: -fs-muted;
+             -fx-alignment: center; -fx-font-size: 13px; }
+.task-icon.running { -fx-background-color: -fs-acc-16; -fx-text-fill: -fs-acc-text; }
+.task-icon.done { -fx-background-color: -fs-ok-18; -fx-text-fill: -fs-ok; }
+.task-row { -fx-padding: 10; }
+
+/* Tools */
+.task-icon.missing { -fx-background-color: -fs-warn-14; -fx-text-fill: -fs-warn; }
+.warn-text { -fx-text-fill: -fs-warn; }
+.tools-link { -fx-cursor: hand; }
+.tool-row { -fx-padding: 14 16 14 16; -fx-border-color: -fs-line; -fx-border-width: 1 0 0 0; }
+.tool-row.first { -fx-border-width: 0; }
+.tool-guide { -fx-padding: 0 0 2 40; }
+.code-box { -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1;
+            -fx-background-radius: 10, 9; -fx-padding: 8 10 8 10;
+            -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12.5px; }
+
+/* Review list */
+.stats-row { -fx-padding: 0 0 18 0; }
+.review-list { -fx-padding: 14 12 20 24; }
+.stat-card { -fx-background-color: -fs-panel; -fx-background-radius: 18;
+             -fx-border-color: -fs-card-line; -fx-border-radius: 18; -fx-padding: 14 16 14 16; }
+.stat-head { -fx-min-height: 30; }
+.stat-dot { -fx-min-width: 8; -fx-min-height: 8; -fx-max-width: 8; -fx-max-height: 8; -fx-translate-y: 4; }
+.stat-label { -fx-font-size: 12px; -fx-text-fill: -fs-muted; }
+.stat-value { -fx-font-family: "Outfit Medium"; -fx-font-size: 28px; }
+.ticks { -fx-min-height: 22; -fx-pref-height: 22; -fx-max-height: 22; }
+.tick { -fx-min-width: 2; -fx-max-width: 2; -fx-background-radius: 1; -fx-background-color: -fs-tick; }
+.tick.acc { -fx-background-color: -fs-acc; }
+.tick.warn { -fx-background-color: -fs-warn; }
+.tick.risk { -fx-background-color: -fs-risk; }
+.tick.ok { -fx-background-color: -fs-ok; }
+.risk-head { -fx-background-color: -fs-risk-30, -fs-raise, -fs-risk-07; -fx-background-insets: 0, 1 1 0 1, 1 1 0 1;
+             -fx-background-radius: 18 18 0 0, 17 17 0 0, 17 17 0 0; -fx-padding: 14 16 5 16; }
+.risk-bang { -fx-min-width: 20; -fx-min-height: 20; -fx-max-width: 20; -fx-max-height: 20;
+             -fx-background-radius: 10; -fx-background-color: -fs-risk; -fx-text-fill: -fs-on-acc;
+             -fx-alignment: center; -fx-font-family: "Outfit SemiBold"; -fx-font-size: 12px; }
+.risk-item { -fx-background-color: -fs-risk-30, -fs-raise, -fs-risk-07; -fx-background-insets: 0, 0 1 0 1, 0 1 0 1;
+             -fx-padding: 5 16 5 16; }
+.risk-item.last { -fx-background-insets: 0, 0 1 1 1, 0 1 1 1; -fx-background-radius: 0 0 18 18, 0 0 17 17, 0 0 17 17;
+                  -fx-padding: 5 16 14 16; }
+.risk-inner { -fx-background-color: -fs-line, -fs-raise; -fx-background-insets: 0, 1;
+              -fx-background-radius: 14, 13; -fx-padding: 12 14 12 14; }
+.risk-path { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12.5px; -fx-underline: true; -fx-cursor: hand; }
+.toggle-btn { -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1;
+              -fx-background-radius: 16, 15; -fx-min-height: 32; -fx-pref-height: 32; -fx-padding: 0 14 0 14;
+              -fx-graphic-text-gap: 6; }
+.toggle-btn.on { -fx-background-color: -fs-acc, -fs-raise, -fs-acc-10; -fx-background-insets: 0, 1, 1;
+                 -fx-background-radius: 16, 15, 15; }
+.check-glyph { -fx-min-width: 14; -fx-min-height: 14; -fx-max-width: 14; -fx-max-height: 14;
+               -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1;
+               -fx-background-radius: 4, 3; -fx-alignment: center; -fx-font-size: 10px; -fx-text-fill: -fs-on-acc; }
+.toggle-btn.on .check-glyph { -fx-background-color: -fs-acc; -fx-background-insets: 0; }
+.group-head { -fx-padding: 18 2 6 2; }
+.group-title { -fx-font-family: "Outfit SemiBold"; }
+/* A group's rows are separate list cells drawn as one card: the sides on every row, the
+   top and bottom edges and their corners on .first and .last. */
+.row { -fx-min-height: 46; -fx-padding: 4 16 4 16; -fx-cursor: hand;
+       -fx-background-color: -fs-panel, transparent; -fx-background-radius: 0, 0;
+       -fx-border-color: -fs-line -fs-card-line transparent -fs-card-line; -fx-border-width: 1 1 0 1; }
+.row.first { -fx-background-radius: 18 18 0 0, 18 18 0 0; -fx-border-radius: 18 18 0 0;
+             -fx-border-color: -fs-card-line -fs-card-line transparent -fs-card-line; }
+.row.last { -fx-background-radius: 0 0 18 18, 0 0 18 18; -fx-border-radius: 0 0 18 18;
+            -fx-border-color: -fs-line -fs-card-line -fs-card-line -fs-card-line; -fx-border-width: 1; }
+.row.first.last { -fx-background-radius: 18, 18; -fx-border-radius: 18; -fx-border-color: -fs-card-line; }
+.row:hover { -fx-background-color: -fs-panel, -fs-hover; }
+.row.plain, .row.plain:hover { -fx-cursor: default; -fx-background-color: -fs-panel, transparent; }
+/* The changes card's top edge; its rows follow as .row cells. */
+.bulk-row { -fx-min-height: 40; -fx-padding: 4 16 4 16; -fx-background-color: -fs-panel, transparent;
+            -fx-background-radius: 18 18 0 0, 18 18 0 0; -fx-border-radius: 18 18 0 0;
+            -fx-border-color: -fs-card-line -fs-card-line transparent -fs-card-line; -fx-border-width: 1 1 0 1; }
+.bulk-row.picked { -fx-background-color: -fs-panel, -fs-acc-07; }
+.pick { -fx-min-width: 16; -fx-min-height: 16; -fx-max-width: 16; -fx-max-height: 16; -fx-cursor: hand;
+        -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1.5;
+        -fx-background-radius: 5, 3.5; -fx-alignment: center; -fx-font-size: 10px; -fx-text-fill: -fs-on-acc; }
+.pick.on { -fx-background-color: -fs-acc; -fx-background-insets: 0; }
+.filter { -fx-background-color: transparent; -fx-background-radius: 13; -fx-border-color: -fs-line2;
+          -fx-border-width: 1; -fx-border-radius: 13; -fx-min-height: 26; -fx-pref-height: 26;
+          -fx-padding: 0 10 0 10; }
+.filter .label { -fx-font-size: 12px; -fx-text-fill: -fs-muted; }
+.filter .filter-count { -fx-opacity: 0.7; }
+.filter.on.faint { -fx-background-color: -fs-faint-10; -fx-border-color: -fs-faint-45; }
+.filter.on.faint .label { -fx-text-fill: -fs-text; }
+.filter.on.hdd { -fx-background-color: -fs-hdd-10; -fx-border-color: -fs-hdd-45; }
+.filter.on.hdd .label { -fx-text-fill: -fs-hdd; }
+.filter.on.lap { -fx-background-color: -fs-lap-10; -fx-border-color: -fs-lap-45; }
+.filter.on.lap .label { -fx-text-fill: -fs-lap; }
+.filter.on.risk { -fx-background-color: -fs-risk-10; -fx-border-color: -fs-risk-45; }
+.filter.on.risk .label { -fx-text-fill: -fs-risk; }
+.sort-seg .seg-opt { -fx-min-height: 20; -fx-pref-height: 20; -fx-padding: 0 8 0 8; -fx-font-size: 11.5px; }
+.row.selected { -fx-background-color: -fs-panel, -fs-acc-09; }
+.row.skipped > * { -fx-opacity: 0.45; }
+.badge { -fx-min-width: 18; -fx-min-height: 18; -fx-max-width: 18; -fx-max-height: 18;
+         -fx-background-radius: 4; -fx-alignment: center; -fx-font-family: "IBM Plex Mono Medm";
+         -fx-font-size: 11px; }
+.row .badge { -fx-min-width: 24; -fx-min-height: 24; -fx-max-width: 24; -fx-max-height: 24;
+              -fx-background-radius: 12; }
+.badge-n { -fx-text-fill: -fs-ok; -fx-background-color: -fs-ok-14; }
+.badge-m { -fx-text-fill: -fs-acc; -fx-background-color: -fs-acc-14; }
+.badge-d { -fx-text-fill: -fs-risk; -fx-background-color: -fs-risk-14; }
+.badge-c { -fx-text-fill: -fs-warn; -fx-background-color: -fs-warn-14; }
+.path-dir { -fx-text-fill: -fs-faint; }
+.path-name { -fx-font-family: "Outfit Medium"; }
+.risk-tag { -fx-font-size: 12px; -fx-text-fill: -fs-risk; -fx-font-family: "Outfit Medium"; }
+.sizes { -fx-min-width: 120; -fx-pref-width: 120; -fx-alignment: center-right; -fx-font-size: 12px;
+         -fx-text-fill: -fs-muted; }
+.dir-text { -fx-min-width: 110; -fx-pref-width: 110; -fx-alignment: center-right; -fx-font-size: 12px;
+            -fx-text-fill: -fs-acc-text; -fx-font-family: "Outfit Medium"; }
+.dir-hdd { -fx-text-fill: -fs-hdd; }
+.dir-lap { -fx-text-fill: -fs-lap; }
+.dir-risk { -fx-text-fill: -fs-risk; }
+.dir-skip { -fx-text-fill: -fs-muted; }
+.seg { -fx-background-color: -fs-line; -fx-background-radius: 15; -fx-padding: 3; }
+.seg-opt { -fx-background-color: transparent; -fx-background-radius: 12; -fx-min-height: 24; -fx-pref-height: 24;
+           -fx-padding: 0 9 0 9; -fx-font-size: 12px; -fx-text-fill: -fs-muted; }
+.seg-opt.on { -fx-background-color: -fs-raise; -fx-text-fill: -fs-acc-text;
+              -fx-effect: dropshadow(gaussian, -fs-shadow, 2, 0, 0, 1); }
+.seg-opt.on.neutral { -fx-text-fill: -fs-text; }
+.seg-opt:disabled { -fx-opacity: 0.4; }
+.empty-row { -fx-padding: 40 0 0 0; -fx-alignment: center; -fx-text-fill: -fs-muted; }
+.gate-text { -fx-font-size: 12px; -fx-text-fill: -fs-risk; -fx-font-family: "Outfit Medium"; }
+
+/* Detail panel: a floating card. The shadow sits on a plain region underneath, so the
+   diff list is not redrawn through an effect on every scroll. */
+.detail-host { -fx-padding: 14 14 14 0; }
+.detail-card { -fx-background-color: -fs-panel; -fx-background-radius: 20;
+               -fx-border-color: -fs-card-line; -fx-border-radius: 20;
+               -fx-effect: dropshadow(gaussian, -fs-card-shadow, 24, 0, 0, 8); }
+.detail-head { -fx-padding: 14 16 12 16; -fx-border-color: -fs-line; -fx-border-width: 0 0 1 0; }
+.detail-name { -fx-font-family: "Outfit SemiBold"; }
+.cmp-card { -fx-background-color: -fs-line, -fs-raise; -fx-background-insets: 0, 1;
+            -fx-background-radius: 14, 13; -fx-padding: 10 12 10 12; }
+.cmp-size { -fx-font-family: "Outfit Medium"; }
+.newer { -fx-font-size: 11px; -fx-text-fill: -fs-ok; }
+.detail-note { -fx-padding: 16; -fx-text-fill: -fs-muted; }
+.diff-toolbar { -fx-padding: 8 12 8 12; -fx-border-color: -fs-line; -fx-border-width: 0 0 1 0; }
+.diff-toolbar .seg-opt { -fx-min-height: 22; -fx-pref-height: 22; -fx-padding: 0 8 0 8; }
+.diff-list { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; -fx-fixed-cell-size: 20; }
+.diff-row { -fx-min-height: 20; -fx-max-height: 20; -fx-border-color: transparent; -fx-border-width: 0 0 0 2; }
+.diff-row.changed { -fx-background-color: -fs-warn-14; }
+.diff-row.left { -fx-background-color: -fs-risk-11; }
+.diff-row.right { -fx-background-color: -fs-ok-13; }
+.diff-row.current { -fx-border-color: -fs-acc; }
+.ln { -fx-min-width: 30; -fx-pref-width: 30; -fx-max-width: 30; -fx-alignment: center-right;
+      -fx-text-fill: -fs-faint; -fx-padding: 0 4 0 0; }
+.sign { -fx-min-width: 14; -fx-pref-width: 14; -fx-max-width: 14; -fx-alignment: center; }
+.sign.minus { -fx-text-fill: -fs-risk; }
+.sign.plus { -fx-text-fill: -fs-ok; }
+.hl { -fx-background-color: -fs-warn-42; -fx-background-radius: 2; }
+.log-box { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; }
+.log-box, .log-box .content { -fx-background-color: -fs-side; -fx-background-radius: 8; }
+
+/* Apply */
+.done-circle { -fx-min-width: 28; -fx-min-height: 28; -fx-max-width: 28; -fx-max-height: 28;
+               -fx-background-radius: 14; -fx-background-color: -fs-ok-18; -fx-text-fill: -fs-ok;
+               -fx-alignment: center; -fx-font-family: "Outfit SemiBold"; }
+.done-circle.failed { -fx-background-color: -fs-risk-14; -fx-text-fill: -fs-risk; }
+.result-card { -fx-padding: 0; }
+.result-row { -fx-padding: 10 14 10 14; -fx-border-color: -fs-line; -fx-border-width: 1 0 0 0; }
+.result-row.first { -fx-border-width: 0; }
+.mark { -fx-min-width: 18; -fx-alignment: center; }
+.mark.done { -fx-text-fill: -fs-ok; }
+.mark.none { -fx-text-fill: -fs-muted; }
+.mark.warn { -fx-text-fill: -fs-warn; }
+.warn-card { -fx-background-color: -fs-warn-40, -fs-raise, -fs-warn-09; -fx-background-insets: 0, 1, 1;
+             -fx-background-radius: 18, 17, 17; -fx-padding: 14 16 14 16; }
+
+/* Scroll bars: thin and quiet, the same everywhere. */
+.scroll-bar { -fx-background-color: transparent; }
+.scroll-bar .thumb { -fx-background-color: -fs-line2; -fx-background-radius: 4; -fx-background-insets: 2; }
+.scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; -fx-opacity: 0; }
+.scroll-bar:vertical { -fx-pref-width: 10; }
+.scroll-bar:horizontal { -fx-pref-height: 10; }
+.tooltip { -fx-font-size: 12px; }

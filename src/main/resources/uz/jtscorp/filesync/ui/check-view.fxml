@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<!-- Step 2, on screen only while the Check task runs. -->
+<StackPane xmlns:fx="http://javafx.com/fxml" fx:controller="uz.jtscorp.filesync.ui.CheckView">
+    <VBox spacing="18" maxWidth="440" maxHeight="-Infinity">
+        <VBox spacing="2">
+            <Label text="%check.title" styleClass="page-title"/>
+            <Label text="%check.subtitle" styleClass="muted"/>
+        </VBox>
+        <ProgressBar fx:id="progress" progress="0" maxWidth="Infinity" styleClass="progress-thin"/>
+        <VBox fx:id="taskRows" spacing="2" styleClass="card, task-card"/>
+    </VBox>
+</StackPane>

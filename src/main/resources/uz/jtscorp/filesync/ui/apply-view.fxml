@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<!-- Step 4: one of three panes (running, done, failed), chosen by ApplyView. -->
+<StackPane xmlns:fx="http://javafx.com/fxml" fx:controller="uz.jtscorp.filesync.ui.ApplyView">
+    <VBox fx:id="runningPane" spacing="14" maxWidth="620" maxHeight="-Infinity">
+        <Label text="%apply.title" styleClass="page-title"/>
+        <ProgressBar fx:id="progress" progress="0" maxWidth="Infinity" styleClass="progress-thin"/>
+        <Label fx:id="phaseLabel" styleClass="mono, muted, small"/>
+    </VBox>
+
+    <VBox fx:id="finishedPane" spacing="14" maxWidth="620" maxHeight="-Infinity">
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Label fx:id="finishedCircle" styleClass="done-circle"/>
+            <VBox spacing="2">
+                <Label fx:id="finishedTitle" styleClass="page-title"/>
+                <Label fx:id="finishedSub" styleClass="muted, small" wrapText="true"/>
+            </VBox>
+        </HBox>
+        <VBox fx:id="resultRows" styleClass="card, result-card"/>
+        <VBox fx:id="warnCard" spacing="8" styleClass="warn-card">
+            <Label text="%apply.unmergedTitle" styleClass="card-title"/>
+            <Label fx:id="warnBody" wrapText="true" styleClass="muted"/>
+            <VBox fx:id="unmergedRows" spacing="6"/>
+        </VBox>
+        <HBox spacing="8" alignment="CENTER_LEFT">
+            <Button fx:id="logToggle" styleClass="btn-ghost" onAction="#onToggleLog"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Button fx:id="backButton" text="%review.back" styleClass="btn" onAction="#onBack"/>
+            <Button fx:id="newCheckButton" text="%apply.newCheck" styleClass="btn-primary" onAction="#onNewCheck"/>
+        </HBox>
+        <TextArea fx:id="logBox" editable="false" maxHeight="220" styleClass="log-box"/>
+    </VBox>
+</StackPane>
