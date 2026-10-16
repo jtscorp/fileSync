@@ -11,8 +11,8 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * Which of a plan's changes the review screen lists, and in what order. Free of JavaFX so
- * the filter and the four orders have a plain test.
+ * Which of a plan's changes and conflicts the review screen lists, and in what order. Free
+ * of JavaFX so the filters and the four orders have a plain test.
  */
 final class ChangeList {
 
@@ -42,6 +42,35 @@ final class ChangeList {
         }
     }
 
+    /** A conflict has no direction until one is picked, so its filter is what was decided. */
+    enum ConflictFilter {
+        ALL("filter.all"), UNDECIDED("filter.undecided"), LAPTOP("side.laptop"), HDD("side.hdd"),
+        MERGE("resolution.merge");
+
+        private final String key;
+
+        ConflictFilter(String key) {
+            this.key = key;
+        }
+
+        String label() {
+            return Texts.t(key);
+        }
+
+        boolean matches(Resolution decision) {
+            return this == ALL || this == of(decision);
+        }
+
+        static ConflictFilter of(Resolution decision) {
+            return switch (decision) {
+                case SKIP -> UNDECIDED;
+                case LAPTOP -> LAPTOP;
+                case HDD -> HDD;
+                case MERGE -> MERGE;
+            };
+        }
+    }
+
     enum Sort {
         PATH("sort.path"), NAME("sort.name"), SIZE("sort.size"), DATE("sort.date");
 
@@ -64,12 +93,29 @@ final class ChangeList {
         return changes.stream().filter(filter::matches).count();
     }
 
+    static long count(List<SyncAction> conflicts, Function<String, Resolution> decision,
+                      ConflictFilter filter) {
+        return conflicts.stream().filter(a -> filter.matches(decision.apply(a.relativePath()))).count();
+    }
+
+    static List<SyncAction> shown(List<SyncAction> changes, Function<String, FilePair> facts,
+                                  Filter filter, Sort sort, boolean reversed) {
+        return changes.stream().filter(filter::matches).sorted(order(facts, sort, reversed)).toList();
+    }
+
+    /** @param decision what was picked for a conflict's path; {@code SKIP} when nothing was */
+    static List<SyncAction> shownConflicts(List<SyncAction> conflicts, Function<String, FilePair> facts,
+                                           Function<String, Resolution> decision, ConflictFilter filter,
+                                           Sort sort, boolean reversed) {
+        return conflicts.stream().filter(a -> filter.matches(decision.apply(a.relativePath())))
+                .sorted(order(facts, sort, reversed)).toList();
+    }
+
     /**
      * Paths and names run A to Z, sizes largest first, dates newest first; {@code reversed}
      * turns that around. A row's size and date are the larger and the later of its two copies.
      */
-    static List<SyncAction> shown(List<SyncAction> changes, Function<String, FilePair> facts,
-                                  Filter filter, Sort sort, boolean reversed) {
+    private static Comparator<SyncAction> order(Function<String, FilePair> facts, Sort sort, boolean reversed) {
         Comparator<SyncAction> order = switch (sort) {
             case PATH -> Comparator.comparing(SyncAction::relativePath);
             case NAME -> Comparator.comparing(a -> ReviewText.splitPath(a.relativePath()).name());
@@ -78,8 +124,7 @@ final class ChangeList {
             case DATE -> Comparator.comparing(
                     (SyncAction a) -> modified(facts.apply(a.relativePath()))).reversed();
         };
-        return changes.stream().filter(filter::matches)
-                .sorted(reversed ? order.reversed() : order).toList();
+        return reversed ? order.reversed() : order;
     }
 
     private static long size(FilePair pair) {

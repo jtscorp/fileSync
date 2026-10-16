@@ -289,6 +289,10 @@
 .filter.on.lap .label { -fx-text-fill: -fs-lap; }
 .filter.on.risk { -fx-background-color: -fs-risk-10; -fx-border-color: -fs-risk-45; }
 .filter.on.risk .label { -fx-text-fill: -fs-risk; }
+.filter.on.warn { -fx-background-color: -fs-warn-09; -fx-border-color: -fs-warn-42; }
+.filter.on.warn .label { -fx-text-fill: -fs-warn; }
+.filter.on.acc { -fx-background-color: -fs-acc-10; -fx-border-color: -fs-acc-35; }
+.filter.on.acc .label { -fx-text-fill: -fs-acc-text; }
 .sort-seg .seg-opt { -fx-min-height: 20; -fx-pref-height: 20; -fx-padding: 0 8 0 8; -fx-font-size: 11.5px; }
 .row.selected { -fx-background-color: -fs-panel, -fs-acc-09; }
 .row.skipped > * { -fx-opacity: 0.45; }

@@ -11,6 +11,7 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -27,6 +28,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Step 3: the plan, the risks that gate it, and the diff of the selected file. The
@@ -45,7 +48,6 @@ public class ReviewView {
     private record StatsRow() implements Row {}
     private record RiskHeadRow() implements Row {}
     private record RiskRow(RiskGate.Item item, boolean last) implements Row {}
-    private record GroupRow(String title, String hint) implements Row {}
     /** {@code first}/{@code last}: where the group's card gets its top and bottom edge. */
     private record ActionRow(SyncAction action, boolean first, boolean last) implements Row {}
     private record EmptyRow() implements Row {}
@@ -53,8 +55,12 @@ public class ReviewView {
     private record ChangesHeadRow() implements Row {}
     /** The top edge of the changes card: select all, and what to do with the ticked rows. */
     private record BulkRow() implements Row {}
-    /** The bottom edge of the changes card when the filter leaves it no row. */
-    private record FilterEmptyRow() implements Row {}
+    /** The conflicts group's title, with what narrows and orders its rows. */
+    private record ConflictsHeadRow() implements Row {}
+    /** The top edge of the conflicts card: select all, and which side the ticked rows keep. */
+    private record ConflictBulkRow() implements Row {}
+    /** The bottom edge of a card when its filter leaves it no row. */
+    private record FilterEmptyRow(String text) implements Row {}
 
     /** The detail pane's width in review-view.fxml. */
     private static final double DETAIL_MIN_WIDTH = 454;
@@ -74,6 +80,11 @@ public class ReviewView {
     private ChangeList.Filter filter = ChangeList.Filter.ALL;
     private ChangeList.Sort sort = ChangeList.Sort.PATH;
     private boolean sortReversed;
+    /** Conflicts ticked for their bulk bar; kept apart so neither bar acts on the other's rows. */
+    private final Set<String> pickedConflicts = new HashSet<>();
+    private ChangeList.ConflictFilter conflictFilter = ChangeList.ConflictFilter.ALL;
+    private ChangeList.Sort conflictSort = ChangeList.Sort.PATH;
+    private boolean conflictSortReversed;
     private SyncProfile profile;
     private CheckResult result;
     private RiskGate gate;
@@ -130,12 +141,14 @@ public class ReviewView {
         this.result = result;
         this.gate = gate;
         picked.clear();
+        pickedConflicts.clear();
         filter = ChangeList.Filter.ALL;
+        conflictFilter = ChangeList.ConflictFilter.ALL;
         rebuildRows();
 
         // What most needs a look comes up first: a risky file, else a conflict.
         String first = gate.items().stream().filter(RiskGate.Item::isFile).map(RiskGate.Item::path).findFirst()
-                .or(() -> result.conflicts().stream().map(SyncAction::relativePath).findFirst())
+                .or(() -> shownConflicts().stream().map(SyncAction::relativePath).findFirst())
                 .or(() -> shownChanges().stream().map(SyncAction::relativePath).findFirst())
                 .orElse(null);
         if (first != null) {
@@ -152,7 +165,33 @@ public class ReviewView {
         return ChangeList.shown(result.changes(), result::factsFor, filter, sort, sortReversed);
     }
 
-    /** The rows themselves change only with a new check, the filter or the order. */
+    /** A skipped conflict is left alone whatever was picked for it, so it counts as undecided. */
+    private Resolution decision(String path) {
+        return isSkipped(path) ? Resolution.SKIP : resolutions.getOrDefault(path, Resolution.SKIP);
+    }
+
+    /** The conflicts group as its filter and order leave it. */
+    private List<SyncAction> shownConflicts() {
+        return ChangeList.shownConflicts(result.conflicts(), result::factsFor, this::decision,
+                conflictFilter, conflictSort, conflictSortReversed);
+    }
+
+    /**
+     * A decision moves a conflict between filters; under any filter but "all" its row
+     * leaves the list, which is what turns "undecided" into a queue.
+     */
+    private void afterResolution(String path) {
+        if (conflictFilter != ChangeList.ConflictFilter.ALL) {
+            rebuildRows();
+        }
+        if (path == null || path.equals(selectedPath)) {
+            refresh();
+        } else {
+            select(path);
+        }
+    }
+
+    /** The rows themselves change only with a new check, a filter or an order, or a decision under a conflict filter. */
     private void rebuildRows() {
         List<Row> rows = new ArrayList<>();
         rows.add(new StatsRow());
@@ -165,21 +204,14 @@ public class ReviewView {
         }
         List<SyncAction> conflicts = result.conflicts();
         if (!conflicts.isEmpty()) {
-            rows.add(new GroupRow(Texts.t("review.conflicts", conflicts.size()),
-                    Texts.t("review.conflictsHint")));
-            addGroup(rows, conflicts);
+            rows.add(new ConflictsHeadRow());
+            rows.add(new ConflictBulkRow());
+            addCard(rows, shownConflicts(), Texts.t("review.conflictFilterEmpty"));
         }
         if (!result.changes().isEmpty()) {
             rows.add(new ChangesHeadRow());
             rows.add(new BulkRow());
-            List<SyncAction> shown = shownChanges();
-            // The bulk bar is the card's top edge, so no change row is ever the first.
-            for (int i = 0; i < shown.size(); i++) {
-                rows.add(new ActionRow(shown.get(i), false, i == shown.size() - 1));
-            }
-            if (shown.isEmpty()) {
-                rows.add(new FilterEmptyRow());
-            }
+            addCard(rows, shownChanges(), Texts.t("review.filterEmpty"));
         }
         if (result.actions().isEmpty()) {
             rows.add(new EmptyRow());
@@ -187,9 +219,13 @@ public class ReviewView {
         reviewList.getItems().setAll(rows);
     }
 
-    private static void addGroup(List<Row> rows, List<SyncAction> actions) {
-        for (int i = 0; i < actions.size(); i++) {
-            rows.add(new ActionRow(actions.get(i), i == 0, i == actions.size() - 1));
+    /** The bulk bar is the card's top edge, so no row is ever the first. */
+    private static void addCard(List<Row> rows, List<SyncAction> shown, String emptyText) {
+        for (int i = 0; i < shown.size(); i++) {
+            rows.add(new ActionRow(shown.get(i), false, i == shown.size() - 1));
+        }
+        if (shown.isEmpty()) {
+            rows.add(new FilterEmptyRow(emptyText));
         }
     }
 
@@ -199,6 +235,7 @@ public class ReviewView {
         gate = null;
         selectedPath = null;
         picked.clear();
+        pickedConflicts.clear();
         reviewList.setItems(FXCollections.observableArrayList());
         diffPanel.clear();
         applyButton.setDisable(true);
@@ -291,12 +328,13 @@ public class ReviewView {
                 case StatsRow r -> stats();
                 case RiskHeadRow r -> riskHead();
                 case RiskRow r -> riskItem(r.item(), r.last());
-                case GroupRow r -> group(r);
                 case ActionRow r -> actionRow(r);
                 case EmptyRow r -> emptyRow();
                 case ChangesHeadRow r -> changesHead();
                 case BulkRow r -> bulkRow();
-                case FilterEmptyRow r -> filterEmptyRow();
+                case ConflictsHeadRow r -> conflictsHead();
+                case ConflictBulkRow r -> conflictBulkRow();
+                case FilterEmptyRow r -> filterEmptyRow(r.text());
             });
         }
     }
@@ -448,63 +486,89 @@ public class ReviewView {
     }
 
     private void afterDecision(RiskGate.Item item) {
-        // Same file already shown: re-running diff would change nothing.
-        if (!item.isFile() || item.path().equals(selectedPath)) {
-            refresh();
-        } else {
-            select(item.path());
-        }
-    }
-
-    private Node group(GroupRow row) {
-        HBox head = new HBox(10, label(row.title(), "group-title"), label(row.hint(), "faint", "small"));
-        head.setAlignment(Pos.BASELINE_LEFT);
-        head.getStyleClass().add("group-head");
-        return head;
+        // Same file already shown: re-running diff would change nothing. A skip at the gate
+        // can move a conflict between filters, so this goes the way a resolution does.
+        afterResolution(item.isFile() ? item.path() : null);
     }
 
     private Node changesHead() {
         List<SyncAction> changes = result.changes();
-        HBox sorts = new HBox();
-        sorts.getStyleClass().addAll("seg", "sort-seg");
-        for (ChangeList.Sort option : ChangeList.Sort.values()) {
-            Button button = new Button(option.label(option == sort, sortReversed));
-            button.getStyleClass().add("seg-opt");
-            if (option == sort) {
-                button.getStyleClass().addAll("on", "neutral");
-            }
-            button.setOnAction(e -> {
-                sortReversed = option == sort && !sortReversed;
-                sort = option;
-                rebuildRows();
-            });
-            sorts.getChildren().add(button);
-        }
-        HBox top = new HBox(10, label(Texts.t("review.changes", changes.size()), "group-title"), spacer(), sorts);
+        HBox top = new HBox(10, label(Texts.t("review.changes", changes.size()), "group-title"), spacer(),
+                sortButtons(sort, sortReversed, option -> {
+                    sortReversed = option == sort && !sortReversed;
+                    sort = option;
+                    rebuildRows();
+                }));
         top.setAlignment(Pos.CENTER_LEFT);
 
         // On their own line: beside the title and the orders they do not fit the list's width.
         HBox filters = new HBox(4);
         for (ChangeList.Filter option : ChangeList.Filter.values()) {
-            Region dot = new Region();
-            dot.getStyleClass().addAll("dot", "dot-" + tone(option));
-            HBox content = new HBox(6, dot, label(option.label(), "filter-name"),
-                    label(String.valueOf(ChangeList.count(changes, option)), "filter-count"));
-            content.setAlignment(Pos.CENTER_LEFT);
-            Button button = new Button(null, content);
-            button.getStyleClass().addAll("filter", tone(option));
-            if (option == filter) {
-                button.getStyleClass().add("on");
-            }
-            button.setOnAction(e -> {
-                filter = option;
-                rebuildRows();
-            });
-            filters.getChildren().add(button);
+            filters.getChildren().add(filterChip(option.label(), ChangeList.count(changes, option),
+                    tone(option), option == filter, () -> {
+                        filter = option;
+                        rebuildRows();
+                    }));
         }
         VBox head = new VBox(8, top, filters);
         head.getStyleClass().add("group-head");
         return head;
+    }
+
+    private Node conflictsHead() {
+        List<SyncAction> conflicts = result.conflicts();
+        HBox top = new HBox(10, label(Texts.t("review.conflicts", conflicts.size()), "group-title"), spacer(),
+                sortButtons(conflictSort, conflictSortReversed, option -> {
+                    conflictSortReversed = option == conflictSort && !conflictSortReversed;
+                    conflictSort = option;
+                    rebuildRows();
+                }));
+        top.setAlignment(Pos.CENTER_LEFT);
+
+        // Five chips do not fit the list's width in one line; they wrap rather than shrink.
+        FlowPane filters = new FlowPane(4, 4);
+        for (ChangeList.ConflictFilter option : ChangeList.ConflictFilter.values()) {
+            filters.getChildren().add(filterChip(option.label(),
+                    ChangeList.count(conflicts, this::decision, option), tone(option),
+                    option == conflictFilter, () -> {
+                        conflictFilter = option;
+                        rebuildRows();
+                    }));
+        }
+        VBox head = new VBox(8, top, label(Texts.t("review.conflictsHint"), "faint", "small"), filters);
+        head.getStyleClass().add("group-head");
+        return head;
+    }
+
+    /** The arrow marks the order in use; a second click on it turns the order around. */
+    private static HBox sortButtons(ChangeList.Sort current, boolean reversed, Consumer<ChangeList.Sort> onPick) {
+        HBox sorts = new HBox();
+        sorts.getStyleClass().addAll("seg", "sort-seg");
+        for (ChangeList.Sort option : ChangeList.Sort.values()) {
+            Button button = new Button(option.label(option == current, reversed));
+            button.getStyleClass().add("seg-opt");
+            if (option == current) {
+                button.getStyleClass().addAll("on", "neutral");
+            }
+            button.setOnAction(e -> onPick.accept(option));
+            sorts.getChildren().add(button);
+        }
+        return sorts;
+    }
+
+    private static Button filterChip(String text, long count, String tone, boolean on, Runnable onPick) {
+        Region dot = new Region();
+        dot.getStyleClass().addAll("dot", "dot-" + tone);
+        HBox content = new HBox(6, dot, label(text, "filter-name"), label(String.valueOf(count), "filter-count"));
+        content.setAlignment(Pos.CENTER_LEFT);
+        Button button = new Button(null, content);
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        button.getStyleClass().addAll("filter", tone);
+        if (on) {
+            button.getStyleClass().add("on");
+        }
+        button.setOnAction(e -> onPick.run());
+        return button;
     }
 
     /** The colour a kind of change is drawn in: its filter's dot and its row's direction. */
@@ -517,9 +581,20 @@ public class ReviewView {
         };
     }
 
+    /** Undecided is drawn as a conflict is; each side in its own colour. */
+    private static String tone(ChangeList.ConflictFilter kind) {
+        return switch (kind) {
+            case ALL -> "faint";
+            case UNDECIDED -> "warn";
+            case LAPTOP -> "lap";
+            case HDD -> "hdd";
+            case MERGE -> "acc";
+        };
+    }
+
     /** The ticked rows still on screen; a tick the filter has hidden is not acted on. */
-    private List<String> pickedShown() {
-        return shownChanges().stream().map(SyncAction::relativePath).filter(picked::contains).toList();
+    private static List<String> pickedShown(List<SyncAction> shown, Set<String> ticks) {
+        return shown.stream().map(SyncAction::relativePath).filter(ticks::contains).toList();
     }
 
     private static Label checkBox(String mark) {
@@ -531,30 +606,7 @@ public class ReviewView {
     }
 
     private Node bulkRow() {
-        List<String> shown = shownChanges().stream().map(SyncAction::relativePath).toList();
-        List<String> ticked = pickedShown();
-        boolean all = !shown.isEmpty() && ticked.size() == shown.size();
-
-        Label box = checkBox(all ? "✓" : ticked.isEmpty() ? "" : "–");
-        Tooltip.install(box, new Tooltip(Texts.t("review.selectAll")));
-        box.setOnMouseClicked(e -> {
-            if (all) {
-                shown.forEach(picked::remove);
-            } else {
-                picked.addAll(shown);
-            }
-            refresh();
-        });
-        Label text = label(ReviewText.bulkText(ticked.size()), "small", ticked.isEmpty() ? "muted" : "w500");
-        text.setMinWidth(0);
-        HBox.setHgrow(text, Priority.ALWAYS);
-        text.setMaxWidth(Double.MAX_VALUE);
-
-        HBox row = new HBox(10, box, text);
-        row.setAlignment(Pos.CENTER_LEFT);
-        row.getStyleClass().add("bulk-row");
-        if (!ticked.isEmpty()) {
-            row.getStyleClass().add("picked");
+        return bulkBar(shownChanges(), picked, ticked -> {
             Button skip = bulkButton(Texts.t("review.skip"), "btn");
             skip.setOnAction(e -> {
                 ticked.forEach(path -> setSkipped(path, true));
@@ -569,14 +621,66 @@ public class ReviewView {
                 picked.clear();
                 refresh();
             });
-            // A glyph, not the words: the three buttons and the count share one narrow row.
+            return List.of(skip, apply);
+        });
+    }
+
+    /**
+     * Merge is not offered here: it is allowed per file, and a bulk merge would have to pass
+     * over the files it may not touch without saying so.
+     */
+    private Node conflictBulkRow() {
+        return bulkBar(shownConflicts(), pickedConflicts, ticked -> List.of(
+                keepButton(Texts.t("review.bulkKeepLaptop"), ticked, Resolution.LAPTOP),
+                keepButton(Texts.t("review.bulkKeepHdd"), ticked, Resolution.HDD),
+                keepButton(Resolution.SKIP.label(), ticked, Resolution.SKIP)));
+    }
+
+    private Button keepButton(String text, List<String> ticked, Resolution resolution) {
+        Button button = bulkButton(text, "btn");
+        button.setOnAction(e -> {
+            ticked.forEach(path -> resolutions.put(path, resolution));
+            pickedConflicts.clear();
+            afterResolution(null);
+        });
+        return button;
+    }
+
+    /** @param actions the buttons for the ticked rows still on screen; drawn only while there are some */
+    private HBox bulkBar(List<SyncAction> shownRows, Set<String> ticks, Function<List<String>, List<Button>> actions) {
+        List<String> shown = shownRows.stream().map(SyncAction::relativePath).toList();
+        List<String> ticked = pickedShown(shownRows, ticks);
+        boolean all = !shown.isEmpty() && ticked.size() == shown.size();
+
+        Label box = checkBox(all ? "✓" : ticked.isEmpty() ? "" : "–");
+        Tooltip.install(box, new Tooltip(Texts.t("review.selectAll")));
+        box.setOnMouseClicked(e -> {
+            if (all) {
+                shown.forEach(ticks::remove);
+            } else {
+                ticks.addAll(shown);
+            }
+            refresh();
+        });
+        Label text = label(ReviewText.bulkText(ticked.size()), "small", ticked.isEmpty() ? "muted" : "w500");
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
+        text.setMaxWidth(Double.MAX_VALUE);
+
+        HBox row = new HBox(10, box, text);
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().add("bulk-row");
+        if (!ticked.isEmpty()) {
+            row.getStyleClass().add("picked");
+            row.getChildren().addAll(actions.apply(ticked));
+            // A glyph, not the words: the buttons and the count share one narrow row.
             Button cancel = bulkButton("×", "btn-ghost");
             cancel.setTooltip(new Tooltip(Texts.t("review.clearPicked")));
             cancel.setOnAction(e -> {
-                picked.clear();
+                ticks.clear();
                 refresh();
             });
-            row.getChildren().addAll(skip, apply, cancel);
+            row.getChildren().add(cancel);
         }
         return row;
     }
@@ -588,8 +692,8 @@ public class ReviewView {
         return button;
     }
 
-    private Node filterEmptyRow() {
-        HBox row = new HBox(label(Texts.t("review.filterEmpty"), "muted"));
+    private Node filterEmptyRow(String text) {
+        HBox row = new HBox(label(text, "muted"));
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().addAll("row", "last", "plain");
         return row;
@@ -611,18 +715,17 @@ public class ReviewView {
 
         boolean conflict = action.actionType() == SyncAction.ActionType.CONFLICT;
         HBox row = new HBox(10);
-        if (!conflict) {
-            Label box = checkBox(picked.contains(path) ? "✓" : "");
-            box.setOnMouseClicked(e -> {
-                // A tick is not a look at the file: the row under it stays unselected.
-                e.consume();
-                if (!picked.remove(path)) {
-                    picked.add(path);
-                }
-                refresh();
-            });
-            row.getChildren().add(box);
-        }
+        Set<String> ticks = conflict ? pickedConflicts : picked;
+        Label box = checkBox(ticks.contains(path) ? "✓" : "");
+        box.setOnMouseClicked(e -> {
+            // A tick is not a look at the file: the row under it stays unselected.
+            e.consume();
+            if (!ticks.remove(path)) {
+                ticks.add(path);
+            }
+            refresh();
+        });
+        row.getChildren().add(box);
         row.getChildren().addAll(DiffPanel.badge(action.actionType()), name);
         row.setAlignment(Pos.CENTER_LEFT);
         row.getStyleClass().add("row");
@@ -691,11 +794,7 @@ public class ReviewView {
             }
             button.setOnAction(e -> {
                 resolutions.put(path, option);
-                if (path.equals(selectedPath)) {
-                    refresh();
-                } else {
-                    select(path);
-                }
+                afterResolution(path);
             });
             picker.getChildren().add(button);
         }

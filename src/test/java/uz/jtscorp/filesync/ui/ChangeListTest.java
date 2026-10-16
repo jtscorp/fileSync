@@ -5,6 +5,7 @@ import uz.jtscorp.filesync.sync.FileDiff.FileFacts;
 import uz.jtscorp.filesync.sync.SyncAction;
 import uz.jtscorp.filesync.sync.SyncAction.ActionType;
 import uz.jtscorp.filesync.sync.SyncAction.Direction;
+import uz.jtscorp.filesync.ui.ChangeList.ConflictFilter;
 import uz.jtscorp.filesync.ui.ChangeList.Filter;
 import uz.jtscorp.filesync.ui.ChangeList.Sort;
 import uz.jtscorp.filesync.ui.CheckResult.FilePair;
@@ -57,6 +58,53 @@ class ChangeListTest {
         assertEquals(List.of(SCAN, OLD, ALBUM, REPORT), shown(Filter.ALL, Sort.SIZE, false));
         assertEquals(List.of(SCAN, REPORT, ALBUM, OLD), shown(Filter.ALL, Sort.DATE, false));
         assertEquals(List.of(OLD, ALBUM, REPORT, SCAN), shown(Filter.ALL, Sort.DATE, true));
+    }
+
+    private static final SyncAction DRAFT = new SyncAction("hujjat/qoralama.txt", Direction.CONFLICT, ActionType.CONFLICT);
+    private static final SyncAction PHOTO = new SyncAction("albom/rasm.jpg", Direction.CONFLICT, ActionType.CONFLICT);
+    private static final SyncAction NOTES = new SyncAction("eslatma.md", Direction.CONFLICT, ActionType.CONFLICT);
+    private static final SyncAction TABLE = new SyncAction("hisob/jadval.csv", Direction.CONFLICT, ActionType.CONFLICT);
+    private static final List<SyncAction> CONFLICTS = List.of(DRAFT, PHOTO, NOTES, TABLE);
+
+    private static final Map<String, FilePair> CONFLICT_FACTS = Map.of(
+            DRAFT.relativePath(), new FilePair(file(10, 40), file(12, 10)),
+            PHOTO.relativePath(), new FilePair(file(5000, 20), file(4800, 30)),
+            NOTES.relativePath(), new FilePair(file(300, 5), file(310, 6)),
+            TABLE.relativePath(), new FilePair(file(70, 50), file(60, 1)));
+
+    /** NOTES has no entry: an untouched conflict is undecided. */
+    private static final Map<String, Resolution> DECISIONS = Map.of(
+            DRAFT.relativePath(), Resolution.LAPTOP,
+            PHOTO.relativePath(), Resolution.HDD,
+            TABLE.relativePath(), Resolution.SKIP);
+
+    private static Resolution decision(String path) {
+        return DECISIONS.getOrDefault(path, Resolution.SKIP);
+    }
+
+    private static List<SyncAction> shownConflicts(ConflictFilter filter, Sort sort, boolean reversed) {
+        return ChangeList.shownConflicts(CONFLICTS, CONFLICT_FACTS::get, ChangeListTest::decision,
+                filter, sort, reversed);
+    }
+
+    @Test
+    void aConflictIsFilteredByWhatWasDecidedForIt() {
+        assertEquals(List.of(NOTES, TABLE), shownConflicts(ConflictFilter.UNDECIDED, Sort.PATH, false));
+        assertEquals(List.of(DRAFT), shownConflicts(ConflictFilter.LAPTOP, Sort.PATH, false));
+        assertEquals(List.of(PHOTO), shownConflicts(ConflictFilter.HDD, Sort.PATH, false));
+        assertEquals(List.of(), shownConflicts(ConflictFilter.MERGE, Sort.PATH, false));
+        assertEquals(4, ChangeList.count(CONFLICTS, ChangeListTest::decision, ConflictFilter.ALL));
+        assertEquals(2, ChangeList.count(CONFLICTS, ChangeListTest::decision, ConflictFilter.UNDECIDED));
+        assertEquals(0, ChangeList.count(CONFLICTS, ChangeListTest::decision, ConflictFilter.MERGE));
+    }
+
+    @Test
+    void conflictsTakeTheSameOrdersAsChanges() {
+        assertEquals(List.of(PHOTO, NOTES, TABLE, DRAFT), shownConflicts(ConflictFilter.ALL, Sort.PATH, false));
+        assertEquals(List.of(NOTES, TABLE, DRAFT, PHOTO), shownConflicts(ConflictFilter.ALL, Sort.NAME, false));
+        assertEquals(List.of(PHOTO, NOTES, TABLE, DRAFT), shownConflicts(ConflictFilter.ALL, Sort.SIZE, false));
+        assertEquals(List.of(TABLE, DRAFT, PHOTO, NOTES), shownConflicts(ConflictFilter.ALL, Sort.DATE, false));
+        assertEquals(List.of(TABLE, NOTES), shownConflicts(ConflictFilter.UNDECIDED, Sort.PATH, true));
     }
 
     @Test
