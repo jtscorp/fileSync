@@ -4,7 +4,9 @@ import uz.jtscorp.filesync.Texts;
 import uz.jtscorp.filesync.sync.SyncAction;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -30,18 +32,19 @@ final class ApplySummary {
     /** @param manifestError why the deletion list could not be written to the backup, or null */
     static List<Row> rows(List<SyncAction> actions, ApplyPlan plan, int batchExitCode, boolean mergeFailed,
                           List<String> unmerged, String manifestError) {
+        // Sets: a plan can hold thousands of rows, and each is looked up in these.
+        Set<String> skipped = new HashSet<>(plan.skipped());
         List<SyncAction> done = actions.stream()
                 .filter(a -> a.actionType() != SyncAction.ActionType.CONFLICT)
-                .filter(a -> !plan.skipped().contains(a.relativePath())).toList();
+                .filter(a -> !skipped.contains(a.relativePath())).toList();
         // Deletes the mode or the manifest decided and forced overwrites get their own rows:
         // they are what the user most wants to see counted.
         List<String> deleted = done.stream().filter(ApplySummary::isDecidedDelete)
                 .map(SyncAction::relativePath).toList();
-        List<String> overwritten = done.stream()
-                .filter(a -> a.actionType() == SyncAction.ActionType.CHANGED && a.origin() == SyncAction.Origin.MODE)
+        List<String> overwritten = done.stream().filter(ApplySummary::isForcedOverwrite)
                 .map(SyncAction::relativePath).toList();
         List<String> changes = done.stream()
-                .filter(a -> !isDecidedDelete(a) && !overwritten.contains(a.relativePath()))
+                .filter(a -> !isDecidedDelete(a) && !isForcedOverwrite(a))
                 .map(SyncAction::relativePath).toList();
         List<String> conflicts = actions.stream()
                 .filter(a -> a.actionType() == SyncAction.ActionType.CONFLICT)
@@ -72,7 +75,8 @@ final class ApplySummary {
         if (mergeFailed && unmerged.isEmpty()) {
             rows.add(new Row(Mark.WARN, Texts.n("result.mergeAsked", plan.merges().size()), names(plan.merges())));
         } else {
-            List<String> merged = plan.merges().stream().filter(path -> !unmerged.contains(path)).toList();
+            Set<String> unmergedSet = new HashSet<>(unmerged);
+            List<String> merged = plan.merges().stream().filter(path -> !unmergedSet.contains(path)).toList();
             if (!merged.isEmpty()) {
                 rows.add(new Row(Mark.DONE, Texts.n("result.merged", merged.size()), names(merged)));
             }
@@ -80,9 +84,10 @@ final class ApplySummary {
                 rows.add(new Row(Mark.WARN, Texts.n("result.unmerged", unmerged.size()), names(unmerged)));
             }
         }
-        List<String> untouched = conflicts.stream()
-                .filter(path -> !sidePicked.contains(path) && !plan.merges().contains(path)
-                        && !plan.skipped().contains(path)).toList();
+        Set<String> handled = new HashSet<>(sidePicked);
+        handled.addAll(plan.merges());
+        handled.addAll(skipped);
+        List<String> untouched = conflicts.stream().filter(path -> !handled.contains(path)).toList();
         if (!untouched.isEmpty()) {
             rows.add(new Row(Mark.NONE, Texts.n("result.untouched", untouched.size()), names(untouched)));
         }
@@ -95,6 +100,10 @@ final class ApplySummary {
 
     private static boolean isDecidedDelete(SyncAction a) {
         return a.actionType() == SyncAction.ActionType.DELETED && a.origin() != SyncAction.Origin.UNISON;
+    }
+
+    private static boolean isForcedOverwrite(SyncAction a) {
+        return a.actionType() == SyncAction.ActionType.CHANGED && a.origin() == SyncAction.Origin.MODE;
     }
 
     /** The row that replaces a failed merge once the user has picked which copy stays. */
