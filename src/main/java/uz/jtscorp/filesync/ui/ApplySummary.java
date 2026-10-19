@@ -24,10 +24,25 @@ final class ApplySummary {
      */
     static List<Row> rows(List<SyncAction> actions, ApplyPlan plan, int batchExitCode, boolean mergeFailed,
                           List<String> unmerged) {
-        List<String> changes = actions.stream()
+        return rows(actions, plan, batchExitCode, mergeFailed, unmerged, null);
+    }
+
+    /** @param manifestError why the deletion list could not be written to the backup, or null */
+    static List<Row> rows(List<SyncAction> actions, ApplyPlan plan, int batchExitCode, boolean mergeFailed,
+                          List<String> unmerged, String manifestError) {
+        List<SyncAction> done = actions.stream()
                 .filter(a -> a.actionType() != SyncAction.ActionType.CONFLICT)
-                .map(SyncAction::relativePath)
-                .filter(path -> !plan.skipped().contains(path)).toList();
+                .filter(a -> !plan.skipped().contains(a.relativePath())).toList();
+        // Deletes the mode or the manifest decided and forced overwrites get their own rows:
+        // they are what the user most wants to see counted.
+        List<String> deleted = done.stream().filter(ApplySummary::isDecidedDelete)
+                .map(SyncAction::relativePath).toList();
+        List<String> overwritten = done.stream()
+                .filter(a -> a.actionType() == SyncAction.ActionType.CHANGED && a.origin() == SyncAction.Origin.MODE)
+                .map(SyncAction::relativePath).toList();
+        List<String> changes = done.stream()
+                .filter(a -> !isDecidedDelete(a) && !overwritten.contains(a.relativePath()))
+                .map(SyncAction::relativePath).toList();
         List<String> conflicts = actions.stream()
                 .filter(a -> a.actionType() == SyncAction.ActionType.CONFLICT)
                 .map(SyncAction::relativePath).toList();
@@ -36,6 +51,15 @@ final class ApplySummary {
         String firstTwo = names(changes.stream().limit(2).toList()) + (changes.size() > 2 ? " …" : "");
         rows.add(new Row(changes.isEmpty() ? Mark.NONE : Mark.DONE,
                 Texts.n("result.changes", changes.size()), firstTwo));
+        if (!deleted.isEmpty()) {
+            rows.add(new Row(Mark.DONE, Texts.n("result.deleted", deleted.size()), names(deleted)));
+        }
+        if (!overwritten.isEmpty()) {
+            rows.add(new Row(Mark.DONE, Texts.n("result.overwritten", overwritten.size()), names(overwritten)));
+        }
+        if (manifestError != null) {
+            rows.add(new Row(Mark.WARN, Texts.t("result.manifestFailed", manifestError), ""));
+        }
         // With conflicts in the plan -batch always exits 1; only without them is it news.
         if (batchExitCode == 1 && conflicts.isEmpty()) {
             rows.add(new Row(Mark.WARN, Texts.t("result.unisonSkipped"), ""));
@@ -67,6 +91,10 @@ final class ApplySummary {
                     names(plan.skipped())));
         }
         return rows;
+    }
+
+    private static boolean isDecidedDelete(SyncAction a) {
+        return a.actionType() == SyncAction.ActionType.DELETED && a.origin() != SyncAction.Origin.UNISON;
     }
 
     /** The row that replaces a failed merge once the user has picked which copy stays. */

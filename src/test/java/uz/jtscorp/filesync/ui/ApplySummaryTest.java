@@ -92,4 +92,37 @@ class ApplySummaryTest {
                 new Row(Mark.NONE, "1 ta konflikt tegilmadi", "config.yaml")),
                 ApplySummary.rows(actions, plan, 1, false, List.of()));
     }
+
+    @Test
+    void prunedAndOverwrittenRowsCountOnlyModeAndManifestRows() {
+        SyncAction pruned = new SyncAction("a/gone.txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                SyncAction.ActionType.DELETED, SyncAction.Origin.MANIFEST);
+        SyncAction mirrored = new SyncAction("b/mirror.txt", SyncAction.Direction.HDD_TO_LAPTOP,
+                SyncAction.ActionType.DELETED, SyncAction.Origin.MODE);
+        SyncAction skippedPrune = new SyncAction("c/kept.txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                SyncAction.ActionType.DELETED, SyncAction.Origin.MANIFEST);
+        SyncAction forced = new SyncAction("d/forced.txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                SyncAction.ActionType.CHANGED, SyncAction.Origin.MODE);
+        SyncAction unisonDelete = new SyncAction("e/plain.txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                SyncAction.ActionType.DELETED);
+        ApplyPlan plan = new ApplyPlan(List.of(), List.of(), List.of(), List.of("c/kept.txt"));
+
+        assertEquals(List.of(
+                new Row(Mark.DONE, "1 ta o'zgarish o'tkazildi", "plain.txt"),
+                new Row(Mark.DONE, "2 ta fayl yoki papka o'chirildi", "gone.txt, mirror.txt"),
+                new Row(Mark.DONE, "1 ta fayl ustidan yozildi", "forced.txt"),
+                new Row(Mark.NONE, "1 ta fayl o'tkazib yuborildi", "kept.txt")),
+                ApplySummary.rows(List.of(pruned, mirrored, skippedPrune, forced, unisonDelete), plan, 0,
+                        false, List.of()));
+    }
+
+    @Test
+    void manifestWriteFailureIsAWarning() {
+        ApplyPlan plan = new ApplyPlan(List.of(), List.of(), List.of(), List.of());
+
+        List<Row> rows = ApplySummary.rows(List.of(change("a.txt")), plan, 0, false, List.of(), "ruxsat yo'q");
+
+        assertEquals(new Row(Mark.WARN, "O'chirishlar ro'yxatini zaxiraga yozib bo'lmadi: ruxsat yo'q", ""),
+                rows.get(rows.size() - 1));
+    }
 }

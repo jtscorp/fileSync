@@ -2,6 +2,7 @@ package uz.jtscorp.filesync.ui;
 
 import uz.jtscorp.filesync.Texts;
 import uz.jtscorp.filesync.sync.FileDiff.FileFacts;
+import uz.jtscorp.filesync.sync.PlanInterpreter;
 import uz.jtscorp.filesync.sync.SyncAction;
 import uz.jtscorp.filesync.sync.SyncAction.ActionType;
 import uz.jtscorp.filesync.sync.SyncAction.Direction;
@@ -52,12 +53,29 @@ final class ReviewText {
         if (action.actionType() == ActionType.DELETED) {
             return Texts.t(toHdd ? "dir.hddDelete" : "dir.laptopDelete");
         }
+        if (action.actionType() == ActionType.CHANGED && action.origin() == SyncAction.Origin.MODE) {
+            // The mode forces this copy over the other one, however it differs.
+            return Texts.t(toHdd ? "dir.hddOverwrite" : "dir.laptopOverwrite");
+        }
         return Texts.t(toHdd ? "dir.toHdd" : "dir.toLaptop");
+    }
+
+    /** What a folder about to be deleted holds: "27 fayl · 120 KB". */
+    static String folderSummary(CheckResult.FolderContents folder) {
+        return Texts.n("review.folderContents", folder.files().size(), SizeFormat.format(folder.bytes()));
+    }
+
+    static String rename(PlanInterpreter.Rename rename) {
+        return Texts.t("review.rename", rename.from(), rename.to());
     }
 
     static String actionLine(SyncAction action) {
         String line = Texts.t(action.direction() == Direction.LAPTOP_TO_HDD ? "action.toHdd" : "action.toLaptop");
-        return action.actionType() == ActionType.DELETED ? Texts.t("action.delete", line) : line;
+        if (action.actionType() == ActionType.DELETED) {
+            return Texts.t("action.delete", line);
+        }
+        boolean overwrite = action.actionType() == ActionType.CHANGED && action.origin() == SyncAction.Origin.MODE;
+        return overwrite ? Texts.t("action.overwrite", line) : line;
     }
 
     /**

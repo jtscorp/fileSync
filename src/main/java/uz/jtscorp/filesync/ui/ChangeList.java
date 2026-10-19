@@ -2,12 +2,16 @@ package uz.jtscorp.filesync.ui;
 
 import uz.jtscorp.filesync.Texts;
 import uz.jtscorp.filesync.sync.FileDiff.FileFacts;
+import uz.jtscorp.filesync.sync.PlanInterpreter;
 import uz.jtscorp.filesync.sync.SyncAction;
 import uz.jtscorp.filesync.ui.CheckResult.FilePair;
 
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.function.Function;
 
 /**
@@ -17,7 +21,8 @@ import java.util.function.Function;
 final class ChangeList {
 
     enum Filter {
-        ALL("filter.all"), TO_HDD("filter.hdd"), TO_LAPTOP("filter.laptop"), DELETES("filter.deletes");
+        ALL("filter.all"), TO_HDD("filter.hdd"), TO_LAPTOP("filter.laptop"), DELETES("filter.deletes"),
+        OVERWRITES("filter.overwrites");
 
         private final String key;
 
@@ -37,6 +42,10 @@ final class ChangeList {
         static Filter of(SyncAction action) {
             if (action.actionType() == SyncAction.ActionType.DELETED) {
                 return DELETES;
+            }
+            if (action.actionType() == SyncAction.ActionType.CHANGED && action.origin() == SyncAction.Origin.MODE) {
+                // Forced over a different copy: a reader wants these apart from ordinary updates.
+                return OVERWRITES;
             }
             return action.direction() == SyncAction.Direction.LAPTOP_TO_HDD ? TO_HDD : TO_LAPTOP;
         }
@@ -101,6 +110,28 @@ final class ChangeList {
     static List<SyncAction> shown(List<SyncAction> changes, Function<String, FilePair> facts,
                                   Filter filter, Sort sort, boolean reversed) {
         return changes.stream().filter(filter::matches).sorted(order(facts, sort, reversed)).toList();
+    }
+
+    /** A list entry: one change, or a recognised move shown as a single line. */
+    record Entry(SyncAction action, PlanInterpreter.Rename rename) {}
+
+    /**
+     * Like {@link #shown} but a rename is one entry: its {@code to} row stands for it and the
+     * {@code from} row is hidden. It sorts and filters as that {@code to} row.
+     */
+    static List<Entry> shownEntries(List<SyncAction> changes, List<PlanInterpreter.Rename> renames,
+                                    Function<String, FilePair> facts, Filter filter, Sort sort,
+                                    boolean reversed) {
+        Set<String> hidden = renames.stream().map(PlanInterpreter.Rename::from).collect(Collectors.toSet());
+        Map<String, PlanInterpreter.Rename> byTarget = renames.stream()
+                .collect(Collectors.toMap(PlanInterpreter.Rename::to, r -> r, (a, b) -> a));
+        Comparator<SyncAction> order = order(facts, sort, reversed);
+        return changes.stream()
+                .filter(a -> !hidden.contains(a.relativePath()))
+                .filter(filter::matches)
+                .map(a -> new Entry(a, byTarget.get(a.relativePath())))
+                .sorted(Comparator.comparing(Entry::action, order))
+                .toList();
     }
 
     /** @param decision what was picked for a conflict's path; {@code SKIP} when nothing was */

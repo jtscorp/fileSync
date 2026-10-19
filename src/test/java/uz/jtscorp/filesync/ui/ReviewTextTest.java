@@ -136,4 +136,41 @@ class ReviewTextTest {
         assertEquals("D", ReviewText.typeLetter(ActionType.DELETED));
         assertEquals("C", ReviewText.typeLetter(ActionType.CONFLICT));
     }
+
+    @Test
+    void forcedAndManifestDeletesNameTheSide() {
+        SyncAction pruned = new SyncAction("a.txt", Direction.LAPTOP_TO_HDD, ActionType.DELETED,
+                SyncAction.Origin.MANIFEST);
+        SyncAction mirrored = new SyncAction("a.txt", Direction.HDD_TO_LAPTOP, ActionType.DELETED,
+                SyncAction.Origin.MODE);
+
+        assertEquals("Zaxiradan o'chadi", ReviewText.direction(pruned));
+        assertEquals("Asosiydan o'chadi", ReviewText.direction(mirrored));
+    }
+
+    @Test
+    void forcedChangeIsAnOverwrite() {
+        SyncAction toHdd = new SyncAction("a.txt", Direction.LAPTOP_TO_HDD, ActionType.CHANGED, SyncAction.Origin.MODE);
+        SyncAction toLaptop = new SyncAction("a.txt", Direction.HDD_TO_LAPTOP, ActionType.CHANGED, SyncAction.Origin.MODE);
+
+        assertEquals("Zaxirada ustidan yoziladi", ReviewText.direction(toHdd));
+        assertEquals("Asosiyda ustidan yoziladi", ReviewText.direction(toLaptop));
+        assertEquals("Asosiy nusxa zaxiraga o'tkaziladi (ustidan yozish)", ReviewText.actionLine(toHdd));
+        assertEquals("← Asosiyga", ReviewText.direction(action(Direction.HDD_TO_LAPTOP, ActionType.CHANGED)));
+    }
+
+    @Test
+    void folderSummaryCountsFilesAndBytes() {
+        CheckResult.FolderContents folder = new CheckResult.FolderContents(java.util.List.of(
+                new CheckResult.Item("a.txt", 1024, false), new CheckResult.Item("b/.cache", 2048, true)), 3072);
+
+        assertEquals("2 fayl · 3,0 KB", ReviewText.folderSummary(folder));
+    }
+
+    @Test
+    void renameNamesBothPaths() {
+        assertEquals("Qayta nomlandi: a.txt → b.txt",
+                ReviewText.rename(new uz.jtscorp.filesync.sync.PlanInterpreter.Rename("a.txt", "b.txt",
+                        Direction.LAPTOP_TO_HDD)));
+    }
 }

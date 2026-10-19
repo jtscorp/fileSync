@@ -113,4 +113,37 @@ class ChangeListTest {
         assertEquals("Hajm ↓", Sort.SIZE.label(true, false));
         assertEquals("Hajm ↑", Sort.SIZE.label(true, true));
     }
+
+    private static final SyncAction FORCED = new SyncAction("z/f.txt", Direction.LAPTOP_TO_HDD, ActionType.CHANGED,
+            SyncAction.Origin.MODE);
+
+    @Test
+    void overwritesHaveTheirOwnFilter() {
+        List<SyncAction> all = List.of(REPORT, FORCED, OLD);
+        Map<String, FilePair> facts = Map.of(REPORT.relativePath(), new FilePair(file(1, 1), file(1, 1)),
+                FORCED.relativePath(), new FilePair(file(1, 1), file(1, 1)),
+                OLD.relativePath(), new FilePair(ABSENT, file(1, 1)));
+
+        assertEquals(List.of(FORCED), ChangeList.shown(all, facts::get, Filter.OVERWRITES, Sort.PATH, false));
+        assertEquals(List.of(REPORT), ChangeList.shown(all, facts::get, Filter.TO_HDD, Sort.PATH, false));
+        assertEquals(1, ChangeList.count(all, Filter.OVERWRITES));
+        assertEquals("Ustidan yoziladi", Filter.OVERWRITES.label());
+    }
+
+    @Test
+    void renameIsOneEntryAndItsDeleteAndNewAreHidden() {
+        SyncAction gone = new SyncAction("a/old.txt", Direction.HDD_TO_LAPTOP, ActionType.DELETED);
+        SyncAction created = new SyncAction("b/new.txt", Direction.HDD_TO_LAPTOP, ActionType.NEW);
+        var rename = new uz.jtscorp.filesync.sync.PlanInterpreter.Rename("a/old.txt", "b/new.txt",
+                Direction.HDD_TO_LAPTOP);
+        List<SyncAction> changes = List.of(gone, created, SCAN);
+        Map<String, FilePair> facts = Map.of(SCAN.relativePath(), new FilePair(file(1, 1), ABSENT),
+                created.relativePath(), new FilePair(ABSENT, file(1, 1)));
+
+        assertEquals(List.of(new ChangeList.Entry(created, rename), new ChangeList.Entry(SCAN, null)),
+                ChangeList.shownEntries(changes, List.of(rename), facts::get, Filter.ALL, Sort.PATH, false));
+        // It filters as its new row, not as the delete it replaces.
+        assertEquals(List.of(), ChangeList.shownEntries(changes, List.of(rename), facts::get,
+                Filter.DELETES, Sort.PATH, false));
+    }
 }

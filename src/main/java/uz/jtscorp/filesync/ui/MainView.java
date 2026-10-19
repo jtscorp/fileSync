@@ -36,6 +36,7 @@ import uz.jtscorp.filesync.config.AppSettings;
 import uz.jtscorp.filesync.config.ProfileStats;
 import uz.jtscorp.filesync.config.ProfileStore;
 import uz.jtscorp.filesync.config.SyncProfile;
+import uz.jtscorp.filesync.config.SyncMode;
 import uz.jtscorp.filesync.sync.FileDiff;
 import uz.jtscorp.filesync.sync.RiskFlag;
 import uz.jtscorp.filesync.sync.RiskScanner;
@@ -737,7 +738,8 @@ public class MainView {
                 stageDone(2, Texts.t("check.conflicts", conflicts, offered));
 
                 return new CheckResult(actions, risks, result.output(), prfHash, mergeable,
-                        result.exitCode(), facts);
+                        result.exitCode(), facts, SyncMode.TWO_WAY, java.util.Map.of(), java.util.List.of(),
+                        java.util.Map.of(), true);
             }
 
             private void stageDone(int index, String text) {

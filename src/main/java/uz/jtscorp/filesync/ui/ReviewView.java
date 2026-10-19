@@ -577,7 +577,7 @@ public class ReviewView {
             case ALL -> "faint";
             case TO_HDD -> "hdd";
             case TO_LAPTOP -> "lap";
-            case DELETES -> "risk";
+            case DELETES, OVERWRITES -> "risk";
         };
     }
 
