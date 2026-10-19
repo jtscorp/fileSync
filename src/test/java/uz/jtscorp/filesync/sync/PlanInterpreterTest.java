@@ -130,6 +130,68 @@ class PlanInterpreterTest {
     }
 
     @Test
+    void folderHoldingAnIgnoredFileIsNotReinterpreted() throws IOException {
+        // Verified on 2.53.3: "-force <lap> -path proj -ignore 'Name *.iso'" deletes proj/x.iso too.
+        file(hdd().resolve("proj/a.txt"), "a");
+        file(hdd().resolve("proj/x.iso"), "iso");
+        Optional<Manifest> m = manifest(Map.of("proj", DIR, "proj/a.txt", f(1)));
+
+        List<SyncAction> parsed = List.of(newOnBackup("proj"));
+        Interpretation result = PlanInterpreter.interpret(parsed, SyncMode.TWO_WAY, m, lap(), hdd(),
+                List.of("Name *.iso"));
+
+        assertEquals(parsed, result.actions());
+        assertEquals(Map.of("proj", Texts.t("note.manifest.addedInside")), result.notes());
+    }
+
+    @Test
+    void folderWithASizeMismatchInsideIsNotReinterpretedAndGetsNoNote() throws IOException {
+        file(hdd().resolve("proj/a.txt"), "abc");
+        Optional<Manifest> m = manifest(Map.of("proj", DIR, "proj/a.txt", f(1)));
+
+        List<SyncAction> parsed = List.of(newOnBackup("proj"));
+        Interpretation result = run(parsed, SyncMode.TWO_WAY, m);
+
+        assertEquals(parsed, result.actions());
+        assertEquals(Map.of(), result.notes());
+    }
+
+    @Test
+    void rowIsNotReinterpretedWhileMainHasSomethingThere() throws IOException {
+        file(hdd().resolve("old.txt"), "abc");
+        file(lap().resolve("old.txt"), "xyz");
+        Optional<Manifest> m = manifest(Map.of("old.txt", f(3)));
+
+        List<SyncAction> parsed = List.of(newOnBackup("old.txt"));
+        Interpretation result = run(parsed, SyncMode.TWO_WAY, m);
+
+        assertEquals(parsed, result.actions());
+        assertEquals(Map.of(), result.notes());
+    }
+
+    @Test
+    void twoNotesOnOnePathAreJoined() throws IOException {
+        file(hdd().resolve("t/inside.txt"), "i");
+        Optional<Manifest> m = manifest(Map.of("t", f(5)));
+
+        Interpretation result = run(List.of(newOnBackup("t")), SyncMode.TWO_WAY_PRUNE, m);
+
+        assertEquals(Map.of("t", Texts.t("note.mode.prune") + " · "
+                + Texts.t("note.manifest.typeChanged", Texts.t("kind.file"), Texts.t("kind.dir")))
+                , result.notes());
+    }
+
+    @Test
+    void interpretationCannotBeModified() throws IOException {
+        Interpretation result = run(new ArrayList<>(List.of(newOnBackup("x"))), SyncMode.TWO_WAY_PRUNE,
+                Optional.empty());
+        assertThrows(UnsupportedOperationException.class, () -> result.actions().clear());
+        assertThrows(UnsupportedOperationException.class, () -> result.flags().clear());
+        assertThrows(UnsupportedOperationException.class, () -> result.renames().clear());
+        assertThrows(UnsupportedOperationException.class, () -> result.notes().clear());
+    }
+
+    @Test
     void folderWithAnUnreadablePartIsNotReinterpreted() throws IOException {
         assumeFalse("root".equals(System.getProperty("user.name")));
         file(hdd().resolve("d/a.txt"), "a");
@@ -260,6 +322,39 @@ class PlanInterpreterTest {
                 new SyncAction("new-name.txt", Direction.LAPTOP_TO_HDD, ActionType.NEW));
 
         assertEquals(List.of(), run(parsed, SyncMode.TWO_WAY, Optional.empty()).renames());
+    }
+
+    @Test
+    void emptyFilesNeverPairAsARename() throws IOException {
+        file(hdd().resolve("old-name.txt"), "");
+        file(lap().resolve("new-name.txt"), "");
+        List<SyncAction> parsed = List.of(
+                new SyncAction("old-name.txt", Direction.LAPTOP_TO_HDD, ActionType.DELETED),
+                new SyncAction("new-name.txt", Direction.LAPTOP_TO_HDD, ActionType.NEW));
+
+        assertEquals(List.of(), run(parsed, SyncMode.TWO_WAY, Optional.empty()).renames());
+    }
+
+    @Test
+    void aPathIsNeverInTwoRenames() throws IOException {
+        // One delete, two identical creates; then two identical deletes, one create.
+        file(hdd().resolve("a1.txt"), "same");
+        file(lap().resolve("b1.txt"), "same");
+        file(lap().resolve("b2.txt"), "same");
+        file(lap().resolve("c1.txt"), "other");
+        file(lap().resolve("c2.txt"), "other");
+        file(hdd().resolve("d1.txt"), "other");
+        List<SyncAction> parsed = List.of(
+                new SyncAction("a1.txt", Direction.LAPTOP_TO_HDD, ActionType.DELETED),
+                new SyncAction("b1.txt", Direction.LAPTOP_TO_HDD, ActionType.NEW),
+                new SyncAction("b2.txt", Direction.LAPTOP_TO_HDD, ActionType.NEW),
+                new SyncAction("c1.txt", Direction.HDD_TO_LAPTOP, ActionType.DELETED),
+                new SyncAction("c2.txt", Direction.HDD_TO_LAPTOP, ActionType.DELETED),
+                new SyncAction("d1.txt", Direction.HDD_TO_LAPTOP, ActionType.NEW));
+
+        assertEquals(List.of(new Rename("a1.txt", "b1.txt", Direction.LAPTOP_TO_HDD),
+                        new Rename("c1.txt", "d1.txt", Direction.HDD_TO_LAPTOP)),
+                run(parsed, SyncMode.TWO_WAY, Optional.empty()).renames());
     }
 
     @Test

@@ -137,6 +137,20 @@ class ManifestTest {
     }
 
     @Test
+    void hddRootThatIsASymlinkIsCapturedNormally(@TempDir Path root) throws IOException {
+        Path lap = root.resolve("lap");
+        Path real = root.resolve("real-hdd");
+        file(lap.resolve("d/a.txt"), "abc");
+        file(real.resolve("d/a.txt"), "abc");
+        Path hdd = Files.createSymbolicLink(root.resolve("hdd"), real);
+
+        Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.empty(), Set.of());
+
+        assertEquals(Map.of("d", new Manifest.Entry('d', 0), "d/a.txt", new Manifest.Entry('f', 3)),
+                m.entries());
+    }
+
+    @Test
     void backslashInNameIsNotTurnedIntoSlash(@TempDir Path root) throws IOException {
         Path lap = root.resolve("lap");
         Path hdd = root.resolve("hdd");

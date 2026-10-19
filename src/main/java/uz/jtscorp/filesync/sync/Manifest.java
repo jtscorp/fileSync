@@ -112,8 +112,9 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
                                    String host, Instant now, Optional<Manifest> previous,
                                    Set<String> carryOver) throws IOException {
         IgnoreRules rules = IgnoreRules.parse(ignores);
-        Map<String, Entry> laptop = walk(laptopRoot, rules);
-        Map<String, Entry> hdd = walk(hddRoot, rules);
+        // Unreadable places are simply not recorded; RiskScanner reports them.
+        Map<String, Entry> laptop = walk(laptopRoot, "", rules).entries();
+        Map<String, Entry> hdd = walk(hddRoot, "", rules).entries();
         Map<String, Entry> entries = new TreeMap<>();
         laptop.forEach((path, entry) -> {
             if (entry.equals(hdd.get(path))) {
@@ -145,23 +146,50 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
         }
     }
 
-    private static boolean underOrEqual(String path, String ancestor) {
+    static boolean underOrEqual(String path, String ancestor) {
         return path.equals(ancestor) || path.startsWith(ancestor + "/");
     }
 
-    private static Map<String, Entry> walk(Path root, IgnoreRules rules) throws IOException {
-        Map<String, Entry> found = new HashMap<>();
-        if (!Files.isDirectory(root)) {
-            return found;
+    /** What a walk found, and the places ("" = the root itself) it could not read and so says nothing about. */
+    record Walk(NavigableMap<String, Entry> entries, Set<String> unreadable) {
+
+        /** Everything strictly below {@code path}; '0' is the character after '/'. */
+        SortedMap<String, Entry> below(String path) {
+            return entries.subMap(path + "/", path + "0");
         }
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+
+        /** True when an unreadable place is at, above or below {@code path}. */
+        boolean touchesUnreadable(String path) {
+            return unreadable.stream().anyMatch(u -> u.isEmpty() || underOrEqual(path, u) || underOrEqual(u, path));
+        }
+    }
+
+    /**
+     * Walks {@code root} from {@code below} ("" = the whole tree) down; paths are relative to
+     * {@code root}. The root itself is followed (a drive is often mounted through a link), links
+     * inside the tree are not. {@code .filesync} at the top is never recorded, whatever the rules.
+     */
+    static Walk walk(Path root, String below, IgnoreRules rules) throws IOException {
+        NavigableMap<String, Entry> found = new TreeMap<>();
+        Set<String> unreadable = new HashSet<>();
+        Path real;
+        try {
+            real = root.toRealPath();
+        } catch (IOException e) {
+            real = null;
+        }
+        if (real == null || !Files.isDirectory(real)) {
+            unreadable.add("");
+            return new Walk(found, unreadable);
+        }
+        Path top = real;
+        Files.walkFileTree(below.isEmpty() ? top : top.resolve(below), new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                if (dir.equals(root)) {
+                if (dir.equals(top)) {
                     return FileVisitResult.CONTINUE;
                 }
-                String rel = relative(root, dir);
-                // Never record our own folder, whatever the ignore rules say.
+                String rel = relative(top, dir);
                 if (rel.equals(FOLDER) || rules.matches(rel)) {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
@@ -171,23 +199,33 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                String rel = relative(root, file);
-                if (rules.matches(rel)) {
-                    return FileVisitResult.CONTINUE;
+                String rel = relative(top, file);
+                if (!rules.matches(rel)) {
+                    found.put(rel, attrs.isSymbolicLink() ? new Entry('l', 0) : new Entry('f', attrs.size()));
                 }
-                found.put(rel, attrs.isSymbolicLink()
-                        ? new Entry('l', 0)
-                        : new Entry('f', attrs.size()));
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
             public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                // Unreadable places are simply not recorded; RiskScanner reports them.
+                // An unopenable directory lands here before preVisitDirectory, hence the rules here too.
+                String rel = relative(top, file);
+                if (rel.isEmpty() || !rules.matches(rel)) {
+                    unreadable.add(rel);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                // The default rethrows; a listing that broke off midway is one more unknown place.
+                if (exc != null) {
+                    unreadable.add(relative(top, dir));
+                }
                 return FileVisitResult.CONTINUE;
             }
         });
-        return found;
+        return new Walk(found, unreadable);
     }
 
     private static String relative(Path root, Path p) {
