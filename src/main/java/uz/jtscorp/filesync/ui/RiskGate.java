@@ -16,6 +16,7 @@ import java.util.Set;
 final class RiskGate {
 
     static final String EXIT_ONE_KEY = "#unison-exit-1";
+    static final String IRREVERSIBLE_KEY = "#irreversible";
 
     /** @param path null for an item that concerns the whole run rather than one file */
     record Item(String key, String path, String title, String reason) {
@@ -38,6 +39,16 @@ final class RiskGate {
      *                         something the plan does not show
      */
     static RiskGate from(List<RiskFlag> risks, int unisonExitCode, boolean planHasConflicts) {
+        return from(risks, unisonExitCode, planHasConflicts, 0, 0);
+    }
+
+    /**
+     * @param irreversibleDeletes    files the sync mode or manifest makes Apply delete
+     * @param irreversibleOverwrites files it makes Apply overwrite; no copy is kept of
+     *                               either, so this acknowledgement is the last safety net
+     */
+    static RiskGate from(List<RiskFlag> risks, int unisonExitCode, boolean planHasConflicts,
+                         int irreversibleDeletes, int irreversibleOverwrites) {
         List<Item> items = new ArrayList<>();
         int batchIndex = 0;
         for (RiskFlag flag : risks) {
@@ -50,6 +61,10 @@ final class RiskGate {
         if (unisonExitCode == 1 && !planHasConflicts) {
             items.add(new Item(EXIT_ONE_KEY, null, Texts.t("gate.exit1.title"),
                     Texts.t("gate.exit1.reason")));
+        }
+        if (irreversibleDeletes > 0 || irreversibleOverwrites > 0) {
+            items.add(new Item(IRREVERSIBLE_KEY, null, Texts.t("gate.irreversible.title"),
+                    Texts.t("gate.irreversible.reason", irreversibleDeletes, irreversibleOverwrites)));
         }
         risks.stream()
                 .filter(flag -> flag.scope() == RiskFlag.Scope.FILE)

@@ -126,4 +126,38 @@ class RiskGateTest {
         gate.setAcknowledged(item.key(), true);
         assertTrue(gate.allAcknowledged());
     }
+
+    @Test
+    void irreversibleItemAppearsOnlyWithCounts() {
+        assertTrue(RiskGate.from(List.of(), 0, false, 0, 0).items().isEmpty());
+
+        RiskGate gate = RiskGate.from(List.of(RiskFlag.forFile("a.xlsx", "x")), 0, false, 3, 2);
+
+        assertEquals(List.of(RiskGate.IRREVERSIBLE_KEY, "a.xlsx"),
+                gate.items().stream().map(RiskGate.Item::key).toList());
+        RiskGate.Item item = gate.items().get(0);
+        assertNull(item.path());
+        assertEquals("3 ta fayl o'chadi, 2 ta fayl ustidan yoziladi. Nusxa saqlanmaydi — "
+                + "buni qaytarib bo'lmaydi.", item.reason());
+        assertEquals(1, RiskGate.from(List.of(), 0, false, 0, 1).items().size());
+        assertEquals(1, RiskGate.from(List.of(), 0, false, 1, 0).items().size());
+    }
+
+    @Test
+    void irreversibleItemCanOnlyBeAcknowledged() {
+        RiskGate gate = RiskGate.from(List.of(), 0, false, 1, 0);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> gate.setSkipped(RiskGate.IRREVERSIBLE_KEY, true));
+    }
+
+    @Test
+    void irreversibleItemBlocksUntilAcknowledged() {
+        RiskGate gate = RiskGate.from(List.of(), 0, false, 1, 1);
+        assertFalse(gate.allAcknowledged());
+
+        gate.setAcknowledged(RiskGate.IRREVERSIBLE_KEY, true);
+
+        assertTrue(gate.allAcknowledged());
+    }
 }
