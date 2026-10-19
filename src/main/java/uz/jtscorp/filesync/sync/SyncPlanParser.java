@@ -11,13 +11,15 @@ public class SyncPlanParser {
     //   "new file  ---->                foo.txt"
     //   "              <---- deleted     bar.txt"
     //   "<-?->                           conflict.txt"
+    // A -force run prints "====>" / "<====" for rows where one side is overwritten; the
+    // state word then belongs to the side that loses (right column for "====>").
     // The arrow is the anchor. State words are matched loosely because Unison has more
     // states than a fixed list ("props", "new dir", ...). The lookahead in rightState keeps
     // it from eating the start of a file name such as "changed.txt".
     // src/test/resources/sample-dryrun-output.txt is a real capture to test changes against.
     private static final Pattern ITEM_LINE = Pattern.compile(
             "^\\s*(?<leftState>[A-Za-z]+(?:\\s+[A-Za-z]+)?)?\\s*"
-                    + "(?<arrow>---->|<----|<-\\?->)\\s*"
+                    + "(?<arrow>---->|<----|<-\\?->|====>|<====)\\s*"
                     + "(?<rightState>[A-Za-z]+(?:\\s+[A-Za-z]+)?(?=\\s))?\\s*"
                     + "(?<path>\\S.*\\S|\\S)\\s*$");
 
@@ -41,6 +43,17 @@ public class SyncPlanParser {
                     ? matcher.group("leftState")
                     : matcher.group("rightState");
 
+            if (arrow.equals("====>") || arrow.equals("<====")) {
+                // The loser's creation is removed, its deletion is undone, anything else overwritten.
+                SyncAction.ActionType forcedType = "deleted".equals(state)
+                        ? SyncAction.ActionType.NEW
+                        : isCreation(state) ? SyncAction.ActionType.DELETED : SyncAction.ActionType.CHANGED;
+                SyncAction.Direction forcedDirection = arrow.equals("====>")
+                        ? SyncAction.Direction.LAPTOP_TO_HDD
+                        : SyncAction.Direction.HDD_TO_LAPTOP;
+                actions.add(new SyncAction(path, forcedDirection, forcedType, SyncAction.Origin.MODE));
+                continue;
+            }
             SyncAction.Direction direction = switch (arrow) {
                 case "---->" -> SyncAction.Direction.LAPTOP_TO_HDD;
                 case "<----" -> SyncAction.Direction.HDD_TO_LAPTOP;

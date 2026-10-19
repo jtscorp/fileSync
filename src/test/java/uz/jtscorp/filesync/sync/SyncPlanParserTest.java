@@ -107,4 +107,53 @@ class SyncPlanParserTest {
         assertEquals("changed.txt", actions.getFirst().relativePath());
         assertEquals(SyncAction.ActionType.CHANGED, actions.getFirst().actionType());
     }
+
+    private static List<SyncAction> forcedPart(int part) throws IOException {
+        try (InputStream in = SyncPlanParserTest.class.getResourceAsStream("/sample-forced-dryrun-output.txt")) {
+            String all = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return new SyncPlanParser().parse(all.split("### force B\n")[part]);
+        }
+    }
+
+    private static void assertAction(List<SyncAction> actions, String path, SyncAction.ActionType type,
+                                     SyncAction.Direction direction, SyncAction.Origin origin) {
+        assertTrue(actions.contains(new SyncAction(path, direction, type, origin)),
+                path + " not parsed as " + type + "/" + direction + "/" + origin + " in " + actions);
+    }
+
+    @Test
+    void forcedLaptopRowsBecomeDeletesAndOverwritesOnHdd() throws IOException {
+        List<SyncAction> actions = forcedPart(0);
+        assertAction(actions, "bonly.txt", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+        assertAction(actions, "edited.txt", SyncAction.ActionType.CHANGED,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+        assertAction(actions, "aonly.txt", SyncAction.ActionType.NEW,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.UNISON);
+    }
+
+    @Test
+    void forcedHddRowsPointAtTheLaptop() throws IOException {
+        List<SyncAction> actions = forcedPart(1);
+        assertAction(actions, "aonly.txt", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+        assertAction(actions, "same.txt", SyncAction.ActionType.NEW,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+    }
+
+    @Test
+    void parsesForcedRowWithBracketsAndSpaces() throws IOException {
+        // the path has a space; it must be kept whole
+        assertAction(forcedPart(0), "old dir", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+    }
+
+    @Test
+    void existingSampleStillParsesAsUnison() throws IOException {
+        try (InputStream in = getClass().getResourceAsStream("/sample-dryrun-output.txt")) {
+            List<SyncAction> actions = new SyncPlanParser().parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            assertTrue(!actions.isEmpty());
+            assertTrue(actions.stream().allMatch(a -> a.origin() == SyncAction.Origin.UNISON));
+        }
+    }
 }

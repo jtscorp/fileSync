@@ -1,0 +1,39 @@
+Unison 2.53.3 (ocaml 4.14.1): Contacting server...
+Looking for changes
+| same.txt          Reconciling changes
+
+A              B                  
+new file ---->            aonly.txt  
+         ====> new file   bonly.txt  
+         ====> changed    edited.txt  
+         ====> new dir    old dir  
+deleted  ---->            same.txt  
+
+5 items will be synced, 0 skipped
+5 B to be synced from A to B
+0 B to be synced from B to A
+
+Proceed with propagating updates? [] No default command [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command '0': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command 'L': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Terminated!
+### force B
+Unison 2.53.3 (ocaml 4.14.1): Contacting server...
+Looking for changes
+| same.txt          Reconciling changes
+
+A              B                  
+new file <====            aonly.txt  
+         <---- new file   bonly.txt  
+         <---- changed    edited.txt  
+         <---- new dir    old dir  
+deleted  <====            same.txt  
+
+5 items will be synced, 0 skipped
+0 B to be synced from A to B
+12 B to be synced from B to A
+
+Proceed with propagating updates? [] No default command [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command '0': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command 'L': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Terminated!

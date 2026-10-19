@@ -126,4 +126,15 @@ class UnisonRunnerTest {
         assertEquals("unison 2.53.3", UnisonRunner.parseVersion("unison version 2.53.3 (ocaml 4.14.1)\n"));
         assertNull(UnisonRunner.parseVersion("bash: unison: command not found"));
     }
+
+    @Test
+    void forcedQuitIsClean() throws java.io.IOException {
+        // A -force run skips the item list, so 0 and L come back as "Unrecognized command"
+        // before q quits; that must still read as a clean quit.
+        try (var in = getClass().getResourceAsStream("/sample-forced-dryrun-output.txt")) {
+            String forced = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                    .split("### force B\n")[0];
+            assertEquals(0, UnisonRunner.dryRunExitCode(new UnisonRunner.Result(3, forced)));
+        }
+    }
 }
