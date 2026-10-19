@@ -939,7 +939,8 @@ public class MainView {
                 ApplyPlan.skipped(gate.skippedPaths(), skippedChanges, actions, lastCheck.renames()),
                 lastCheck.mode());
         // The mode the plan was made under; the .prf hash check below keeps it the profile's.
-        final String forceRoot = forceRoot(lastCheck.mode(), profile);
+        final SyncMode mode = lastCheck.mode();
+        final String forceRoot = forceRoot(mode, profile);
 
         final List<String> phases = new ArrayList<>(List.of(Texts.t("apply.phase.changes")));
         if (!plan.pruneFromHdd().isEmpty()) {
@@ -981,6 +982,9 @@ public class MainView {
                 // A mirror mode forces the whole batch. The prunes are ignored in it: left to
                 // -batch, a backup-only file would be copied onto the main side instead.
                 nextPhase();
+                if (forceRoot != null || !plan.pruneFromHdd().isEmpty()) {
+                    requireUnchangedPlan(profile, mode, forceRoot, actions);
+                }
                 UnisonRunner.Result batch = unisonRunner.apply(profile.name(), forceRoot, plan.batchIgnores());
                 StringBuilder output = new StringBuilder(requireSuccess(batch));
                 if (!plan.pruneFromHdd().isEmpty()) {
@@ -1062,6 +1066,25 @@ public class MainView {
         });
 
         new Thread(task).start();
+    }
+
+    /**
+     * A forced run (a mirror mode's batch, a prune) acts on the disks as they are at Apply time:
+     * an edit made after the Check would be overwritten or deleted without ever being shown.
+     * Re-plans with the same -force and the same reading and refuses, before anything is
+     * transferred, unless every row is what the review showed. A plain two-way run needs none:
+     * it re-reads both sides itself, and a file changed on both is a conflict, which -batch skips.
+     */
+    private void requireUnchangedPlan(SyncProfile profile, SyncMode mode, String forceRoot,
+                                      List<SyncAction> checked) throws IOException, InterruptedException {
+        UnisonRunner.Result result = unisonRunner.dryRun(profile.name(), forceRoot);
+        requireSuccess(result);
+        List<SyncAction> now = PlanInterpreter.interpret(new SyncPlanParser().parse(result.output()), mode,
+                Manifest.read(profile.hddRoot()), profile.laptopRoot(), profile.hddRoot(),
+                profile.unisonIgnores()).actions();
+        if (!new HashSet<>(now).equals(new HashSet<>(checked))) {
+            throw new IOException(Texts.t("apply.planChanged"));
+        }
     }
 
     /**
