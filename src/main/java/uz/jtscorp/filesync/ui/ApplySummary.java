@@ -29,7 +29,7 @@ final class ApplySummary {
         return rows(actions, plan, batchExitCode, mergeFailed, unmerged, null);
     }
 
-    /** @param manifestError why the deletion list could not be written to the backup, or null */
+    /** @param manifestError why the manifest could not be written to the backup, or null */
     static List<Row> rows(List<SyncAction> actions, ApplyPlan plan, int batchExitCode, boolean mergeFailed,
                           List<String> unmerged, String manifestError) {
         // Sets: a plan can hold thousands of rows, and each is looked up in these.

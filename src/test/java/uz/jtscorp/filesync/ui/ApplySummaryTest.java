@@ -122,7 +122,7 @@ class ApplySummaryTest {
 
         List<Row> rows = ApplySummary.rows(List.of(change("a.txt")), plan, 0, false, List.of(), "ruxsat yo'q");
 
-        assertEquals(new Row(Mark.WARN, "O'chirishlar ro'yxatini zaxiraga yozib bo'lmadi: ruxsat yo'q", ""),
+        assertEquals(new Row(Mark.WARN, "Manifestni zaxiraga yozib bo'lmadi: ruxsat yo'q", ""),
                 rows.get(rows.size() - 1));
     }
 }
