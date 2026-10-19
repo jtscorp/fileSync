@@ -75,7 +75,9 @@ final class RenameDetector {
             }
             Manifest.Walk walk = Manifest.walk(root, path, rules);
             Map<String, Manifest.Entry> inside = new TreeMap<>();
-            walk.below(path).forEach((k, v) -> inside.put(k.substring(path.length() + 1), v));
+            // Without the times: the two copies sit on different sides and were written at different moments.
+            walk.below(path).forEach((k, v) ->
+                    inside.put(k.substring(path.length() + 1), new Manifest.Entry(v.type(), v.size(), 0)));
             long files = inside.values().stream().filter(e -> e.type() == 'f').count();
             if (!walk.unreadable().isEmpty() || files == 0) {
                 return null;

@@ -16,8 +16,18 @@ import java.util.*;
 public record Manifest(String profile, String laptopRoot, String host, Instant lastSync,
                        Map<String, Entry> entries) {
 
-    /** type is 'f' (file), 'd' (directory) or 'l' (symbolic link); directories and links have size 0. */
-    public record Entry(char type, long size) {}
+    /**
+     * type is 'f' (file), 'd' (directory) or 'l' (symbolic link); directories and links have size 0.
+     * {@code hddModified} is the backup copy's own (not followed) modified time in epoch millis:
+     * it is what tells a same-size edit on the backup from the copy both sides last held.
+     */
+    public record Entry(char type, long size, long hddModified) {
+
+        /** Same thing as {@code other} apart from the time -- what "same on both sides" can mean. */
+        boolean sameShape(Entry other) {
+            return other != null && type == other.type && size == other.size;
+        }
+    }
 
     private static final String FIRST_LINE = "# filesync-manifest 1";
     private static final String FOLDER = ".filesync";
@@ -54,10 +64,11 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
                     continue;
                 }
                 String[] parts = line.split("\t", -1);
-                if (parts.length != 3 || parts[0].length() != 1 || "fdl".indexOf(parts[0].charAt(0)) < 0) {
+                if (parts.length != 4 || parts[0].length() != 1 || "fdl".indexOf(parts[0].charAt(0)) < 0) {
                     return Optional.empty();
                 }
-                entries.put(unescape(parts[2]), new Entry(parts[0].charAt(0), Long.parseLong(parts[1])));
+                entries.put(unescape(parts[3]), new Entry(parts[0].charAt(0), Long.parseLong(parts[1]),
+                        Long.parseLong(parts[2])));
             }
             String profile = header.get("profile");
             String laptopRoot = header.get("laptopRoot");
@@ -81,7 +92,8 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
         sb.append("# host = ").append(escape(host)).append('\n');
         sb.append("# lastSync = ").append(lastSync).append('\n');
         entries.forEach((path, e) ->
-                sb.append(e.type()).append('\t').append(e.size()).append('\t').append(escape(path)).append('\n'));
+                sb.append(e.type()).append('\t').append(e.size()).append('\t').append(e.hddModified())
+                        .append('\t').append(escape(path)).append('\n'));
 
         Path target = file(hddRoot);
         Files.createDirectories(target.getParent());
@@ -117,8 +129,9 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
         Map<String, Entry> hdd = walk(hddRoot, "", rules).entries();
         Map<String, Entry> entries = new TreeMap<>();
         laptop.forEach((path, entry) -> {
-            if (entry.equals(hdd.get(path))) {
-                entries.put(path, entry);
+            // Type and size only: Unison does not carry modified times across. The record keeps the hdd time.
+            if (entry.sameShape(hdd.get(path))) {
+                entries.put(path, hdd.get(path));
             }
         });
         for (String carried : carryOver) {
@@ -193,7 +206,7 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
                 if (rel.equals(FOLDER) || rules.matches(rel)) {
                     return FileVisitResult.SKIP_SUBTREE;
                 }
-                found.put(rel, new Entry('d', 0));
+                found.put(rel, new Entry('d', 0, attrs.lastModifiedTime().toMillis()));
                 return FileVisitResult.CONTINUE;
             }
 
@@ -201,7 +214,9 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 String rel = relative(top, file);
                 if (!rules.matches(rel)) {
-                    found.put(rel, attrs.isSymbolicLink() ? new Entry('l', 0) : new Entry('f', attrs.size()));
+                    long modified = attrs.lastModifiedTime().toMillis();
+                    found.put(rel, attrs.isSymbolicLink() ? new Entry('l', 0, modified)
+                            : new Entry('f', attrs.size(), modified));
                 }
                 return FileVisitResult.CONTINUE;
             }

@@ -112,7 +112,7 @@ public final class PlanInterpreter {
             return Verdict.NO;
         }
         if (then.type() != 'd') {
-            return then.equals(now) ? Verdict.YES : Verdict.NO;
+            return unchanged(then, now) ? Verdict.YES : Verdict.NO;
         }
         if (now.type() != 'd') {
             return Verdict.NO;
@@ -129,11 +129,20 @@ public final class PlanInterpreter {
             Manifest.Entry recorded = known.get(e.getKey());
             if (recorded == null) {
                 addedInside = true;
-            } else if (!recorded.equals(e.getValue())) {
+            } else if (!unchanged(recorded, e.getValue())) {
                 return Verdict.NO;
             }
         }
         return addedInside ? Verdict.ADDED_INSIDE : Verdict.YES;
+    }
+
+    /**
+     * A file or link is the recorded copy only if type, size and the backup copy's time all match:
+     * a same-size edit changes only the time. A folder's time moves with any change inside it, and
+     * those entries are checked one by one, so a folder is matched by type alone.
+     */
+    private static boolean unchanged(Manifest.Entry recorded, Manifest.Entry now) {
+        return recorded.type() == 'd' ? now.type() == 'd' : recorded.equals(now);
     }
 
     /** Rule 3: on the backup at the last sync, gone now, still on Main -- maybe a failing drive. */

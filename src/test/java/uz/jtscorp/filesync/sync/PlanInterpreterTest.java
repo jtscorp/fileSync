@@ -12,7 +12,9 @@ import uz.jtscorp.filesync.sync.SyncAction.Origin;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -47,11 +49,19 @@ class PlanInterpreterTest {
                 Instant.parse("2026-10-16T12:38:38Z"), entries));
     }
 
+    /** A file record whose time matches nothing on disk: for rows rule 2 must not touch anyway. */
     private static Manifest.Entry f(long size) {
-        return new Manifest.Entry('f', size);
+        return new Manifest.Entry('f', size, 0);
     }
 
-    private static final Manifest.Entry DIR = new Manifest.Entry('d', 0);
+    /** The record a manifest written now would hold for the backup copy at {@code path}. */
+    private Manifest.Entry onHdd(String path) throws IOException {
+        Path p = hdd().resolve(path);
+        return new Manifest.Entry('f', Files.size(p),
+                Files.getLastModifiedTime(p, LinkOption.NOFOLLOW_LINKS).toMillis());
+    }
+
+    private static final Manifest.Entry DIR = new Manifest.Entry('d', 0, 0);
 
     private Interpretation run(List<SyncAction> parsed, SyncMode mode, Optional<Manifest> manifest)
             throws IOException {
@@ -91,7 +101,7 @@ class PlanInterpreterTest {
         file(hdd().resolve("uz/ishonch/Main.java"), "class Main {}");
         file(hdd().resolve("uz/ishonch/Edited.java"), "class Edited { int x; }");
         Optional<Manifest> m = manifest(Map.of("uz", DIR, "uz/ishonch", DIR,
-                "uz/ishonch/Main.java", f(13), "uz/ishonch/Edited.java", f(14)));
+                "uz/ishonch/Main.java", onHdd("uz/ishonch/Main.java"), "uz/ishonch/Edited.java", f(14)));
 
         Interpretation result = run(List.of(newOnBackup("uz/ishonch/Main.java"),
                 newOnBackup("uz/ishonch/Edited.java")), SyncMode.TWO_WAY, m);
@@ -104,11 +114,29 @@ class PlanInterpreterTest {
     }
 
     @Test
+    void sameSizeEditOnBackupAfterTheManifestIsNotReinterpreted() throws IOException {
+        file(hdd().resolve("old.txt"), "abc");
+        file(hdd().resolve("d/in.txt"), "in");
+        Optional<Manifest> m = manifest(Map.of("old.txt", onHdd("old.txt"), "d", DIR, "d/in.txt", onHdd("d/in.txt")));
+        // Edited on the backup since the manifest, same size: only the time tells.
+        for (String edited : List.of("old.txt", "d/in.txt")) {
+            Path p = hdd().resolve(edited);
+            Files.setLastModifiedTime(p, FileTime.fromMillis(Files.getLastModifiedTime(p).toMillis() + 60_000));
+        }
+
+        List<SyncAction> parsed = List.of(newOnBackup("old.txt"), newOnBackup("d"));
+        Interpretation result = run(parsed, SyncMode.TWO_WAY, m);
+
+        assertEquals(parsed, result.actions());
+        assertEquals(Map.of(), result.notes());
+    }
+
+    @Test
     void manifestTurnsStaleFolderIntoOneDeleteWhenAllInsideMatch() throws IOException {
         file(hdd().resolve("uz/ishonch/Main.java"), "class Main {}");
         file(hdd().resolve("uz/ishonch/util/Io.java"), "io");
-        Optional<Manifest> m = manifest(Map.of("uz", DIR, "uz/ishonch", DIR, "uz/ishonch/Main.java", f(13),
-                "uz/ishonch/util", DIR, "uz/ishonch/util/Io.java", f(2)));
+        Optional<Manifest> m = manifest(Map.of("uz", DIR, "uz/ishonch", DIR, "uz/ishonch/Main.java", onHdd("uz/ishonch/Main.java"),
+                "uz/ishonch/util", DIR, "uz/ishonch/util/Io.java", onHdd("uz/ishonch/util/Io.java")));
 
         Interpretation result = run(List.of(newOnBackup("uz/ishonch")), SyncMode.TWO_WAY, m);
 
@@ -120,7 +148,7 @@ class PlanInterpreterTest {
     void folderWithAFileAddedOnBackupIsNotReinterpreted() throws IOException {
         file(hdd().resolve("uz/ishonch/Main.java"), "class Main {}");
         file(hdd().resolve("uz/ishonch/Added.java"), "new");
-        Optional<Manifest> m = manifest(Map.of("uz/ishonch", DIR, "uz/ishonch/Main.java", f(13)));
+        Optional<Manifest> m = manifest(Map.of("uz/ishonch", DIR, "uz/ishonch/Main.java", onHdd("uz/ishonch/Main.java")));
 
         List<SyncAction> parsed = List.of(newOnBackup("uz/ishonch"));
         Interpretation result = run(parsed, SyncMode.TWO_WAY, m);
@@ -134,7 +162,7 @@ class PlanInterpreterTest {
         // Verified on 2.53.3: "-force <lap> -path proj -ignore 'Name *.iso'" deletes proj/x.iso too.
         file(hdd().resolve("proj/a.txt"), "a");
         file(hdd().resolve("proj/x.iso"), "iso");
-        Optional<Manifest> m = manifest(Map.of("proj", DIR, "proj/a.txt", f(1)));
+        Optional<Manifest> m = manifest(Map.of("proj", DIR, "proj/a.txt", onHdd("proj/a.txt")));
 
         List<SyncAction> parsed = List.of(newOnBackup("proj"));
         Interpretation result = PlanInterpreter.interpret(parsed, SyncMode.TWO_WAY, m, lap(), hdd(),
@@ -160,7 +188,7 @@ class PlanInterpreterTest {
     void rowIsNotReinterpretedWhileMainHasSomethingThere() throws IOException {
         file(hdd().resolve("old.txt"), "abc");
         file(lap().resolve("old.txt"), "xyz");
-        Optional<Manifest> m = manifest(Map.of("old.txt", f(3)));
+        Optional<Manifest> m = manifest(Map.of("old.txt", onHdd("old.txt")));
 
         List<SyncAction> parsed = List.of(newOnBackup("old.txt"));
         Interpretation result = run(parsed, SyncMode.TWO_WAY, m);
@@ -196,7 +224,7 @@ class PlanInterpreterTest {
         assumeFalse("root".equals(System.getProperty("user.name")));
         file(hdd().resolve("d/a.txt"), "a");
         Path locked = Files.createDirectories(hdd().resolve("d/locked"));
-        Optional<Manifest> m = manifest(Map.of("d", DIR, "d/a.txt", f(1), "d/locked", DIR));
+        Optional<Manifest> m = manifest(Map.of("d", DIR, "d/a.txt", onHdd("d/a.txt"), "d/locked", DIR));
         Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
         try {
             List<SyncAction> parsed = List.of(newOnBackup("d"));
@@ -213,7 +241,7 @@ class PlanInterpreterTest {
     void manifestFromAnotherHostOrRootIsIgnored() throws IOException {
         file(hdd().resolve("old.txt"), "abc");
         Instant when = Instant.parse("2026-10-16T12:38:38Z");
-        Map<String, Manifest.Entry> entries = Map.of("old.txt", f(3), "lost.txt", f(1));
+        Map<String, Manifest.Entry> entries = Map.of("old.txt", onHdd("old.txt"), "lost.txt", f(1));
         file(lap().resolve("lost.txt"), "x");
         List<SyncAction> parsed = List.of(newOnBackup("old.txt"));
 
@@ -305,6 +333,8 @@ class PlanInterpreterTest {
         file(lap().resolve("old/sub/b.txt"), "bb");
         file(hdd().resolve("new/a.txt"), "a");
         file(hdd().resolve("new/sub/b.txt"), "bb");
+        // The copies were written at different moments; a rename is about bytes, not times.
+        Files.setLastModifiedTime(hdd().resolve("new/a.txt"), FileTime.fromMillis(1_000_000_000_000L));
         List<SyncAction> parsed = List.of(
                 new SyncAction("old", Direction.HDD_TO_LAPTOP, ActionType.DELETED),
                 new SyncAction("new", Direction.HDD_TO_LAPTOP, ActionType.NEW));
@@ -360,7 +390,7 @@ class PlanInterpreterTest {
     @Test
     void forcedModesPassThroughUnchanged() throws IOException {
         file(hdd().resolve("old.txt"), "abc");
-        Optional<Manifest> m = manifest(Map.of("old.txt", f(3)));
+        Optional<Manifest> m = manifest(Map.of("old.txt", onHdd("old.txt")));
         List<SyncAction> parsed = new ArrayList<>(List.of(newOnBackup("old.txt"),
                 new SyncAction("b.txt", Direction.LAPTOP_TO_HDD, ActionType.DELETED, Origin.MODE)));
 
