@@ -31,7 +31,9 @@ public record SyncProfile(String name, Path laptopRoot, Path hddRoot, List<Strin
     /** What Unison and the scanners obey: the user's rules plus the manifest folder. */
     public List<String> unisonIgnores() {
         List<String> all = new ArrayList<>(ignorePatterns);
-        all.add(MANIFEST_IGNORE);
+        if (!all.contains(MANIFEST_IGNORE)) {
+            all.add(MANIFEST_IGNORE);
+        }
         return all;
     }
 

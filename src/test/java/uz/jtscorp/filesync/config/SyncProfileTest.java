@@ -174,6 +174,7 @@ class SyncProfileTest {
         SyncProfile loaded = SyncProfile.readFrom("P", prf);
         assertFalse(loaded.ignorePatterns().contains("Path .filesync"));
         assertEquals("Path .filesync", loaded.unisonIgnores().getLast());
+        assertEquals(1, p.unisonIgnores().stream().filter("Path .filesync"::equals).count());
     }
 
     @Test
