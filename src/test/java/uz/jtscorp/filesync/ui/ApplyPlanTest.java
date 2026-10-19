@@ -145,4 +145,27 @@ class ApplyPlanTest {
                 ApplyPlan.skipped(List.of(), Set.of("new.txt"), actions, List.of(rename)));
         assertTrue(ApplyPlan.skipped(List.of(), Set.of(), actions, List.of(rename)).isEmpty());
     }
+
+    @Test
+    void aRenameSkippedAtTheGateKeepsItsFromPathOutOfEveryRun() {
+        // The from row is a manifest prune: left to the prune run it would be deleted from
+        // the backup while its new name is never written there.
+        List<SyncAction> actions = List.of(
+                prune("old.txt", SyncAction.Origin.MANIFEST),
+                new SyncAction("new.txt", SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.ActionType.NEW));
+        var rename = new uz.jtscorp.filesync.sync.PlanInterpreter.Rename("old.txt", "new.txt",
+                SyncAction.Direction.LAPTOP_TO_HDD);
+
+        List<String> skipped = ApplyPlan.skipped(List.of("new.txt"), Set.of(), actions, List.of(rename));
+        ApplyPlan plan = ApplyPlan.from(Map.of(), actions, Set.of(), true, skipped,
+                uz.jtscorp.filesync.config.SyncMode.TWO_WAY_PRUNE);
+
+        assertEquals(Set.of("old.txt", "new.txt"), Set.copyOf(skipped));
+        assertEquals(2, skipped.size());
+        assertTrue(plan.pruneFromHdd().isEmpty());
+        for (List<String> paths : List.of(plan.laptopWins(), plan.hddWins(), plan.merges())) {
+            assertTrue(!paths.contains("old.txt"));
+        }
+        assertTrue(plan.batchIgnores().contains("old.txt"));
+    }
 }

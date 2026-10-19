@@ -107,9 +107,10 @@ final class ChangeList {
         return conflicts.stream().filter(a -> filter.matches(decision.apply(a.relativePath()))).count();
     }
 
+    /** {@link #shownEntries} with no moves: one filter and order, so its tests cover the live path. */
     static List<SyncAction> shown(List<SyncAction> changes, Function<String, FilePair> facts,
                                   Filter filter, Sort sort, boolean reversed) {
-        return changes.stream().filter(filter::matches).sorted(order(facts, sort, reversed)).toList();
+        return shownEntries(changes, List.of(), facts, filter, sort, reversed).stream().map(Entry::action).toList();
     }
 
     /** A list entry: one change, or a recognised move shown as a single line. */

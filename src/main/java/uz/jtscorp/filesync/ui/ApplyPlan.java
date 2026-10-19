@@ -41,13 +41,15 @@ record ApplyPlan(List<String> laptopWins, List<String> hddWins, List<String> mer
 
     /**
      * Everything this Apply leaves out: gate skips, then skipped changes that are in the plan.
-     * A rename is skipped by its {@code to} path and takes its {@code from} path with it.
+     * A rename is skipped by its {@code to} path and takes its {@code from} path with it,
+     * whether the skip was made in the list or at the gate: left alone, the {@code from} half
+     * would still be deleted while its new name is never written.
      */
     static List<String> skipped(List<String> gateSkipped, Set<String> skippedChanges, List<SyncAction> actions,
                                 List<PlanInterpreter.Rename> renames) {
         List<String> skipped = new ArrayList<>(gateSkipped);
         for (PlanInterpreter.Rename rename : renames) {
-            if (!skippedChanges.contains(rename.to())) {
+            if (!skippedChanges.contains(rename.to()) && !gateSkipped.contains(rename.to())) {
                 continue;
             }
             for (String path : List.of(rename.from(), rename.to())) {

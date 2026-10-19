@@ -285,8 +285,22 @@ public class ReviewView {
                 .anyMatch(r -> r.from().equals(path) && isSkipped(r.to()));
     }
 
-    /** A file the scanner flagged keeps its skip in the gate, where it also counts as decided. */
+    /**
+     * A file the scanner flagged keeps its skip in the gate, where it also counts as decided.
+     * A move's row is its {@code to} path; skipping it settles a gate card for the hidden
+     * {@code from} path too, which would otherwise hold Apply back with no row to show it.
+     */
     private void setSkipped(String path, boolean value) {
+        skipOne(path, value);
+        for (PlanInterpreter.Rename rename : result.renames()) {
+            String from = rename.from();
+            if (rename.to().equals(path) && gate.isFileItem(from)) {
+                gate.setSkipped(from, value);
+            }
+        }
+    }
+
+    private void skipOne(String path, boolean value) {
         if (gate.isFileItem(path)) {
             gate.setSkipped(path, value);
         } else if (value) {
@@ -780,8 +794,10 @@ public class ReviewView {
         }
         row.setOnMouseClicked(e -> select(path));
 
-        if (gate.isPendingFile(path)) {
-            row.getChildren().add(label("⚠ " + ReviewText.riskShort(action, result.factsFor(path)), "risk-tag"));
+        String flagged = pendingFlag(path, item.rename());
+        if (flagged != null) {
+            row.getChildren().add(label("⚠ " + ReviewText.riskShort(result.actionFor(flagged).orElse(null),
+                    result.factsFor(flagged)), "risk-tag"));
         }
         if (conflict) {
             Node picker = resolutionPicker(path);
@@ -796,6 +812,14 @@ public class ReviewView {
                                     "dir-" + tone(ChangeList.Filter.of(action))));
         }
         return row;
+    }
+
+    /** The path whose gate card still waits, if any; a move's hidden {@code from} half counts as its own. */
+    private String pendingFlag(String path, PlanInterpreter.Rename rename) {
+        if (gate.isPendingFile(path)) {
+            return path;
+        }
+        return rename != null && gate.isPendingFile(rename.from()) ? rename.from() : null;
     }
 
     /** The muted lines under a row's path: what a move was, what a folder holds, the plan's note. */

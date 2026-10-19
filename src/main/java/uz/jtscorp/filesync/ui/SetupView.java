@@ -106,6 +106,11 @@ public class SetupView {
         refreshFooter();
     }
 
+    /** The mode the form holds, saved or not. */
+    SyncMode mode() {
+        return mode;
+    }
+
     void setSyncHint(String syncHint) {
         syncHintLabel.setText(syncHint);
     }

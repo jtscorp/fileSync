@@ -2,6 +2,7 @@ package uz.jtscorp.filesync.ui;
 
 import org.junit.jupiter.api.Test;
 import uz.jtscorp.filesync.config.ProfileStats;
+import uz.jtscorp.filesync.config.SyncMode;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -41,10 +42,21 @@ class ProfileTextTest {
 
     @Test
     void syncHintAddsCountsOnceThereAreSome() {
-        assertEquals("⇅ ikki tomonlama sinxronlash", ProfileText.syncHint(true, ProfileStats.NONE));
+        assertEquals("⇅ ikki tomonlama sinxronlash", ProfileText.syncHint(true, ProfileStats.NONE, SyncMode.TWO_WAY));
         assertEquals("⇅ ikki tomonlama sinxronlash · 7 fayl · 812 B",
-                ProfileText.syncHint(true, ProfileStats.NONE.withCounts(7, 812)));
+                ProfileText.syncHint(true, ProfileStats.NONE.withCounts(7, 812), SyncMode.TWO_WAY));
         assertEquals("⇅ ikki tomonlama sinxronlash · papkalar tanlanmagan",
-                ProfileText.syncHint(false, ProfileStats.NONE.withCounts(7, 812)));
+                ProfileText.syncHint(false, ProfileStats.NONE.withCounts(7, 812), SyncMode.TWO_WAY));
+    }
+
+    @Test
+    void syncHintNamesAModeOtherThanPlainTwoWay() {
+        // Right above the mode card, "two-way" under a mirror would contradict the choice.
+        assertEquals("Ikki tomonlama, zaxira ortiqchasiz · 7 fayl · 812 B",
+                ProfileText.syncHint(true, ProfileStats.NONE.withCounts(7, 812), SyncMode.TWO_WAY_PRUNE));
+        assertEquals("Ko'zgu: Asosiy → Zaxira",
+                ProfileText.syncHint(true, ProfileStats.NONE, SyncMode.MIRROR_TO_BACKUP));
+        assertEquals("Tiklash: Zaxira → Asosiy · papkalar tanlanmagan",
+                ProfileText.syncHint(false, ProfileStats.NONE, SyncMode.RESTORE_FROM_BACKUP));
     }
 }

@@ -381,6 +381,10 @@ public class MainView {
                 // what is being typed now.
                 clearCheckResult();
                 updateStepper();
+                if (currentProfile != null) {
+                    // The hint names the mode, and a picked mode is an edit not yet saved.
+                    setupViewController.setSyncHint(syncHint(currentProfile, setupViewController.mode()));
+                }
             }
 
             @Override
@@ -578,8 +582,13 @@ public class MainView {
     }
 
     private String syncHint(SyncProfile profile) {
+        return syncHint(profile, profile.mode());
+    }
+
+    /** @param mode the one to name, which the form may hold before it is saved */
+    private String syncHint(SyncProfile profile, SyncMode mode) {
         return ProfileText.syncHint(isConfigured(profile),
-                profileStats.getOrDefault(profile.name(), ProfileStats.NONE));
+                profileStats.getOrDefault(profile.name(), ProfileStats.NONE), mode);
     }
 
     /**

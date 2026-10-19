@@ -2,6 +2,7 @@ package uz.jtscorp.filesync.ui;
 
 import uz.jtscorp.filesync.Texts;
 import uz.jtscorp.filesync.config.ProfileStats;
+import uz.jtscorp.filesync.config.SyncMode;
 
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
@@ -47,9 +48,12 @@ final class ProfileText {
                 SizeFormat.format(stats.totalBytes()));
     }
 
-    /** The line between the two folder fields on the setup screen. */
-    static String syncHint(boolean configured, ProfileStats stats) {
-        String base = Texts.t("profile.twoWay");
+    /**
+     * The line between the two folder fields on the setup screen. It sits right above the
+     * mode card, so it names the mode picked there; plain two-way keeps its own wording.
+     */
+    static String syncHint(boolean configured, ProfileStats stats, SyncMode mode) {
+        String base = mode == SyncMode.TWO_WAY ? Texts.t("profile.twoWay") : mode.label();
         if (!configured) {
             return base + " · " + Texts.t("profile.noFolders");
         }
