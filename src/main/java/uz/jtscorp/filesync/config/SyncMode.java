@@ -46,7 +46,11 @@ public enum SyncMode {
         return this == MIRROR_TO_BACKUP || this == RESTORE_FROM_BACKUP;
     }
 
-    /** Files the Main copy deleted are offered for deletion on the backup too. */
+    /**
+     * Backup-only files (whatever only the backup has, whether Main deleted it or it was only
+     * ever written to the backup) are offered for deletion from the backup instead of being
+     * copied to Main.
+     */
     public boolean prunesBackup() {
         return this == TWO_WAY_PRUNE;
     }
