@@ -146,4 +146,28 @@ class ChangeListTest {
         assertEquals(List.of(), ChangeList.shownEntries(changes, List.of(rename), facts::get,
                 Filter.DELETES, Sort.PATH, false));
     }
+
+    private static final Map<String, Oddity.Mark> MARKS = Map.of(
+            REPORT.relativePath(), new Oddity.Mark(0.72, List.of(new Oddity.Reason(Oddity.Why.NIGHT, "03:41"))),
+            SCAN.relativePath(), new Oddity.Mark(0.81, List.of()),
+            ALBUM.relativePath(), new Oddity.Mark(0.41, List.of()));
+
+    @Test
+    void theOddFilterKeepsOnlyWhatTheModelMarksWithAReason() {
+        List<ChangeList.Entry> odd = ChangeList.shownEntries(CHANGES, List.of(), FACTS::get, Filter.ODD, Sort.PATH,
+                false, MARKS);
+
+        // SCAN scores higher but cannot say why, so it is not marked.
+        assertEquals(List.of(REPORT), odd.stream().map(ChangeList.Entry::action).toList());
+        assertEquals(1, ChangeList.count(CHANGES, Filter.ODD, MARKS));
+        assertEquals(0, ChangeList.count(CHANGES, Filter.ODD));
+    }
+
+    @Test
+    void theAnomalyOrderPutsTheHighestScoreFirstAndTheUnscoredLast() {
+        List<SyncAction> order = ChangeList.shownEntries(CHANGES, List.of(), FACTS::get, Filter.ALL, Sort.ANOMALY,
+                false, MARKS).stream().map(ChangeList.Entry::action).toList();
+
+        assertEquals(List.of(SCAN, REPORT, ALBUM, OLD), order);
+    }
 }

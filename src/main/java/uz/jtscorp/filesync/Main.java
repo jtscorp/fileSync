@@ -18,8 +18,10 @@ public class Main extends Application {
 
         stage.setTitle("FileSync — Unison GUI");
         show(stage, new ProfileStore(unisonDir), settings, null);
-        stage.setMinWidth(1000);
-        stage.setMinHeight(650);
+        stage.setMinWidth(960);
+        stage.setMinHeight(600);
+        stage.setMaxWidth(1800);
+        stage.setMaxHeight(1200);
         stage.show();
     }
 

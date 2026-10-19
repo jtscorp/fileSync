@@ -91,6 +91,9 @@ class RiskScannerTest {
         // The totals follow the same rules: one file of four bytes, not sixty-one.
         assertEquals(1, scan.laptopFiles());
         assertEquals(4, scan.laptopBytes());
+        // So does what the anomaly model learns from.
+        assertEquals(List.of("real.txt"), scan.laptopTree().sample().stream().map(TreeProfile.FileStat::path).toList());
+        assertEquals(1, scan.hddTree().files(""));
     }
 
     @Test

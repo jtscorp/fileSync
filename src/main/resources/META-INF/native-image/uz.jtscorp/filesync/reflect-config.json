@@ -153,6 +153,15 @@
     "allPublicFields": true
   },
   {
+    "name": "com.sun.scenario.effect.impl.prism.PrRenderer",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "com.sun.xml.internal.stream.XMLInputFactoryImpl",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
@@ -189,6 +198,15 @@
     "allPublicFields": true
   },
   {
+    "name": "java.lang.Thread",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "java.nio.ByteBuffer",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
@@ -207,7 +225,25 @@
     "allPublicFields": true
   },
   {
+    "name": "java.util.concurrent.ForkJoinTask",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "java.util.concurrent.atomic.AtomicBoolean",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "java.util.concurrent.atomic.Striped64",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
     "allDeclaredMethods": true,
@@ -226,6 +262,15 @@
   },
   {
     "name": "javafx.geometry.Insets",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javafx.geometry.Pos",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
     "allDeclaredMethods": true,
@@ -378,6 +423,15 @@
     "allPublicFields": true
   },
   {
+    "name": "javafx.scene.control.ProgressIndicator",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "javafx.scene.control.ScrollPane",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
@@ -468,6 +522,15 @@
     "allPublicFields": true
   },
   {
+    "name": "javafx.scene.image.ImageView",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "javafx.scene.layout.BorderPane",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
@@ -478,6 +541,15 @@
   },
   {
     "name": "javafx.scene.layout.ColumnConstraints",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javafx.scene.layout.ConstraintsBase",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
     "allDeclaredMethods": true,
@@ -550,6 +622,42 @@
   },
   {
     "name": "javafx.scene.layout.VBox",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javafx.scene.shape.LineTo",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javafx.scene.shape.MoveTo",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javafx.scene.shape.Path",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "javafx.scene.shape.PathElement",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
     "allDeclaredMethods": true,
@@ -648,6 +756,15 @@
     "allPublicFields": true
   },
   {
+    "name": "jdk.internal.misc.Unsafe",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "sun.misc.Unsafe",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
@@ -666,6 +783,33 @@
     "allPublicFields": true
   },
   {
+    "name": "sun.security.provider.NativePRNG",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "sun.security.provider.SHA",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "sun.security.provider.SHA2$SHA256",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "uz.jtscorp.filesync.Main",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
@@ -675,7 +819,52 @@
     "allPublicFields": true
   },
   {
+    "name": "uz.jtscorp.filesync.ui.ApplyView",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "uz.jtscorp.filesync.ui.CheckView",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
     "name": "uz.jtscorp.filesync.ui.MainView",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "uz.jtscorp.filesync.ui.ReviewView",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "uz.jtscorp.filesync.ui.SetupView",
+    "allDeclaredConstructors": true,
+    "allPublicConstructors": true,
+    "allDeclaredMethods": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true,
+    "allPublicFields": true
+  },
+  {
+    "name": "uz.jtscorp.filesync.ui.ToolsView",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,
     "allDeclaredMethods": true,

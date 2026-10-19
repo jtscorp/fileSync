@@ -37,6 +37,7 @@ import uz.jtscorp.filesync.config.ProfileStats;
 import uz.jtscorp.filesync.config.ProfileStore;
 import uz.jtscorp.filesync.config.SyncProfile;
 import uz.jtscorp.filesync.config.SyncMode;
+import uz.jtscorp.filesync.sync.ContentSignals;
 import uz.jtscorp.filesync.sync.FileDiff;
 import uz.jtscorp.filesync.sync.FolderWalk;
 import uz.jtscorp.filesync.sync.Manifest;
@@ -56,6 +57,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -92,6 +94,8 @@ public class MainView {
     @FXML private Region hddDot;
     @FXML private Label hddLabel;
     @FXML private BorderPane mainPane;
+    @FXML private VBox sidebar;
+    @FXML private Region sidebarGrip;
     @FXML private Label profileTitle;
     @FXML private HBox stepper;
     @FXML private Button step1Button;
@@ -113,6 +117,7 @@ public class MainView {
 
     private SyncProfile currentProfile;
     private int step = 1;
+    private double sidebarWidth = PaneWidths.SIDEBAR;
     /** Whether step 4 has something to show; it stays reachable until the next check. */
     private boolean applyShown;
     /** Set while the profile list is rebuilt, so reselecting the same profile is not a switch. */
@@ -407,7 +412,26 @@ public class MainView {
             public void onApply() {
                 startApply();
             }
+
+            @Override
+            public void onDetailResized(double width) {
+                try {
+                    settings.saveDetailWidth(width);
+                } catch (IOException e) {
+                    // The width still holds for this session; only the next launch forgets it.
+                }
+            }
         }, conflictResolutions, skippedChanges);
+        reviewViewController.restoreDetailWidth(settings.detailWidth());
+        showSidebarWidth(settings.sidebarWidth());
+        PaneGrip.attach(sidebarGrip, 1, () -> sidebarWidth, this::showSidebarWidth,
+                () -> showSidebarWidth(PaneWidths.SIDEBAR), () -> {
+                    try {
+                        settings.saveSidebarWidth(sidebarWidth);
+                    } catch (IOException e) {
+                        // The width still holds for this session; only the next launch forgets it.
+                    }
+                });
         applyViewController.init(new ApplyView.Listener() {
             @Override
             public void onNewCheck() {
@@ -452,6 +476,14 @@ public class MainView {
         watchHdd(null);
         hddWatch.scheduleWithFixedDelay(this::probeHdd, 5, 5, TimeUnit.SECONDS);
         checkTools(true);
+    }
+
+    /** @param wanted a width dragged to or saved earlier, or NaN for the default */
+    private void showSidebarWidth(double wanted) {
+        sidebarWidth = PaneWidths.sidebar(wanted);
+        sidebar.setMinWidth(sidebarWidth);
+        sidebar.setPrefWidth(sidebarWidth);
+        sidebar.setMaxWidth(sidebarWidth);
     }
 
     private static ImageView flag(Texts.Language language) {
@@ -828,6 +860,7 @@ public class MainView {
                 stageDone(1, Texts.n("check.risky", riskyFiles));
 
                 Map<String, CheckResult.FilePair> facts = new HashMap<>();
+                Map<String, CheckResult.Heads> heads = new HashMap<>();
                 Set<String> mergeable = new HashSet<>();
                 int conflicts = 0;
                 for (SyncAction action : actions) {
@@ -835,6 +868,10 @@ public class MainView {
                     Path hddFile = profile.hddRoot().resolve(action.relativePath());
                     facts.put(action.relativePath(),
                             new CheckResult.FilePair(FileDiff.facts(laptopFile), FileDiff.facts(hddFile)));
+                    if (action.actionType() != SyncAction.ActionType.CHANGED) {
+                        // A change's first bytes come with its prefix in the fourth stage.
+                        heads.put(action.relativePath(), heads(laptopFile, hddFile));
+                    }
                     if (action.actionType() == SyncAction.ActionType.CONFLICT) {
                         conflicts++;
                         // Probed even when the profile keeps no backups, so the review
@@ -847,9 +884,12 @@ public class MainView {
                 for (RiskFlag flag : risks) {
                     // A flagged file is not necessarily in Unison's plan; it still needs
                     // its sizes for the gate.
-                    flag.relativePath().ifPresent(path -> facts.computeIfAbsent(path, p ->
-                            new CheckResult.FilePair(FileDiff.facts(profile.laptopRoot().resolve(p)),
-                                    FileDiff.facts(profile.hddRoot().resolve(p)))));
+                    flag.relativePath().filter(path -> !facts.containsKey(path)).ifPresent(path -> {
+                        Path laptopFile = profile.laptopRoot().resolve(path);
+                        Path hddFile = profile.hddRoot().resolve(path);
+                        facts.put(path, new CheckResult.FilePair(FileDiff.facts(laptopFile), FileDiff.facts(hddFile)));
+                        heads.put(path, heads(laptopFile, hddFile));
+                    });
                 }
                 // Without the backups Unison has no common ancestor and the merge run
                 // fails outright, so nothing is mergeable however textual it is.
@@ -866,9 +906,57 @@ public class MainView {
                 }
                 stageDone(2, stage);
 
+                List<SyncAction> changes = actions.stream()
+                        .filter(a -> a.actionType() != SyncAction.ActionType.CONFLICT).toList();
+                int signals = 0;
+                for (SyncAction action : changes) {
+                    // Every signal compares the two copies, so only a change with both is read.
+                    if (action.actionType() != SyncAction.ActionType.CHANGED) {
+                        continue;
+                    }
+                    String path = action.relativePath();
+                    byte[] laptopPrefix = FileDiff.head(profile.laptopRoot().resolve(path), ContentSignals.PREFIX_BYTES);
+                    byte[] hddPrefix = FileDiff.head(profile.hddRoot().resolve(path), ContentSignals.PREFIX_BYTES);
+                    heads.put(path, new CheckResult.Heads(firstBytes(laptopPrefix), firstBytes(hddPrefix)));
+                    if (laptopPrefix == null || hddPrefix == null) {
+                        continue;
+                    }
+                    CheckResult.FilePair pair = facts.get(path);
+                    ContentSignals.Finding finding = action.direction() == SyncAction.Direction.LAPTOP_TO_HDD
+                            ? ContentSignals.check(path, true, laptopPrefix, pair.laptop().size(),
+                                    hddPrefix, pair.hdd().size())
+                            : ContentSignals.check(path, false, hddPrefix, pair.hdd().size(),
+                                    laptopPrefix, pair.laptop().size());
+                    if (finding != null) {
+                        risks.add(RiskFlag.forContent(path, ReviewText.signalReason(finding), finding));
+                        signals++;
+                    }
+                }
+                List<ChangeClusters.Cluster> clusters = ChangeClusters.of(changes, facts::get);
+                Baseline baseline = new Baseline(profileStore.history(profile.name()), changes.size());
+                // The model only marks, and only once the profile has a normal to compare with.
+                Map<String, Oddity.Mark> marks = baseline.enough()
+                        ? Oddity.score(changes, facts::get, scan.laptopTree(), scan.hddTree(), Instant.now(),
+                                ZoneId.systemDefault())
+                        : Map.of();
+                stageDone(3, baseline.enough()
+                        ? ReviewText.analysisDone(signals, clusters.size(),
+                                marks.values().stream().filter(Oddity.Mark::odd).count())
+                        : ReviewText.analysisDone(signals, clusters.size()));
+
                 return new CheckResult(actions, risks, result.output(), prfHash, mergeable,
                         result.exitCode(), facts, profile.mode(), interpreted.notes(), interpreted.renames(),
-                        folders, manifestFound);
+                        folders, manifestFound, heads, clusters, baseline, marks);
+            }
+
+            private static byte[] firstBytes(byte[] prefix) {
+                return prefix == null ? null : Arrays.copyOf(prefix, Math.min(FileDiff.HEAD_BYTES, prefix.length));
+            }
+
+            /** Read here, on the check's thread: an external drive may have to spin up. */
+            private CheckResult.Heads heads(Path laptopFile, Path hddFile) {
+                return new CheckResult.Heads(FileDiff.head(laptopFile, FileDiff.HEAD_BYTES),
+                        FileDiff.head(hddFile, FileDiff.HEAD_BYTES));
             }
 
             private void stageDone(int index, String text) {
@@ -906,7 +994,8 @@ public class MainView {
         mergeablePaths.addAll(result.mergeablePaths());
         gate = RiskGate.from(result.risks(), result.exitCode(), !result.conflicts().isEmpty(),
                 irreversible(result, SyncAction.ActionType.DELETED),
-                irreversible(result, SyncAction.ActionType.CHANGED));
+                irreversible(result, SyncAction.ActionType.CHANGED), result.clusters(), result.baseline(),
+                ZoneId.systemDefault());
         // Not yet probed counts as found: the merge run itself fails safely without diff3.
         reviewViewController.show(profile, result, gate,
                 tools == null || tools.found(ToolCheck.Tool.DIFF3));
@@ -1034,6 +1123,13 @@ public class MainView {
                 String manifestError = ApplySummary.skippedUnnamed(actions, batch.exitCode()) ? null
                         : writeManifest(profile, carryOver(profile, plan, actions));
                 updateStats(profile.name(), stats -> stats.withLastSync(Instant.now()));
+                try {
+                    // One count per sync, never per check: a check repeated before an Apply
+                    // would count twice, and one given up on must not teach the normal.
+                    profileStore.recordChanges(profile.name(), checked.changes().size());
+                } catch (IOException e) {
+                    // The sync is done; only this one does not teach the profile's normal.
+                }
                 return new ApplyResult(output.toString(), warning, batch.exitCode(), unmerged, manifestError);
             }
         };

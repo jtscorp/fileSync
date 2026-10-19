@@ -19,14 +19,15 @@
     -fs-acc-07: rgba(60,131,246,0.07); -fs-acc-08: rgba(60,131,246,0.08); -fs-acc-09: rgba(60,131,246,0.09);
     -fs-acc-10: rgba(60,131,246,0.10); -fs-acc-14: rgba(60,131,246,0.14);
     -fs-acc-16: rgba(60,131,246,0.16); -fs-acc-18: rgba(60,131,246,0.18);
-    -fs-acc-20: rgba(60,131,246,0.20); -fs-acc-35: rgba(60,131,246,0.35);
+    -fs-acc-20: rgba(60,131,246,0.20); -fs-acc-30: rgba(60,131,246,0.30);
+    -fs-acc-35: rgba(60,131,246,0.35); -fs-acc-45: rgba(60,131,246,0.45);
     -fs-risk-07: rgba(229,72,77,0.07); -fs-risk-11: rgba(229,72,77,0.11);
     -fs-risk-14: rgba(229,72,77,0.14); -fs-risk-30: rgba(229,72,77,0.30);
     -fs-warn-09: rgba(245,159,10,0.09); -fs-warn-14: rgba(245,159,10,0.14);
-    -fs-warn-40: rgba(245,159,10,0.40); -fs-warn-42: rgba(245,159,10,0.42);
+    -fs-warn-30: rgba(245,159,10,0.30); -fs-warn-40: rgba(245,159,10,0.40); -fs-warn-42: rgba(245,159,10,0.42);
     -fs-ok-13: rgba(22,162,73,0.13); -fs-ok-14: rgba(22,162,73,0.14);
     -fs-ok-18: rgba(22,162,73,0.18);
-    -fs-risk-10: rgba(229,72,77,0.10); -fs-risk-45: rgba(229,72,77,0.45);
+    -fs-risk-10: rgba(229,72,77,0.10); -fs-risk-45: rgba(229,72,77,0.45); -fs-risk-70: rgba(229,72,77,0.70);
     -fs-lap-07: rgba(11,147,173,0.07); -fs-lap-10: rgba(11,147,173,0.10);
     -fs-lap-20: rgba(11,147,173,0.20); -fs-lap-40: rgba(11,147,173,0.40);
     -fs-lap-45: rgba(11,147,173,0.45);
@@ -256,7 +257,11 @@
                   -fx-padding: 5 16 14 16; }
 .risk-inner { -fx-background-color: -fs-line, -fs-raise; -fx-background-insets: 0, 1;
               -fx-background-radius: 14, 13; -fx-padding: 12 14 12 14; }
-.risk-path { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12.5px; -fx-underline: true; -fx-cursor: hand; }
+.risk-path { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12.5px; -fx-underline: true; }
+.risk-inner.clickable { -fx-cursor: hand; }
+/* The card of the file the detail panel shows: an accent bar on its left edge. */
+.risk-inner.selected { -fx-border-color: transparent transparent transparent -fs-acc; -fx-border-width: 0 0 0 3;
+                       -fx-border-radius: 14; }
 .toggle-btn { -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1;
               -fx-background-radius: 16, 15; -fx-min-height: 32; -fx-pref-height: 32; -fx-padding: 0 14 0 14;
               -fx-graphic-text-gap: 6; }
@@ -321,10 +326,42 @@
 .path-dir { -fx-text-fill: -fs-faint; }
 .path-name { -fx-font-family: "Outfit Medium"; }
 .risk-tag { -fx-font-size: 12px; -fx-text-fill: -fs-risk; -fx-font-family: "Outfit Medium"; }
-.sizes { -fx-min-width: 120; -fx-pref-width: 120; -fx-alignment: center-right; -fx-font-size: 12px;
-         -fx-text-fill: -fs-muted; }
-.dir-text { -fx-min-width: 110; -fx-pref-width: 110; -fx-alignment: center-right; -fx-font-size: 12px;
-            -fx-text-fill: -fs-acc-text; -fx-font-family: "Outfit Medium"; }
+/* A change row's right column: the direction on top, the sizes under it. */
+.right-col { -fx-min-width: 110; -fx-alignment: center-right; }
+.sizes { -fx-font-size: 12px; -fx-text-fill: -fs-muted; }
+.dir-text { -fx-font-size: 12px; -fx-text-fill: -fs-acc-text; -fx-font-family: "Outfit Medium"; }
+/* Under a row, across its width: a pending risk first, then the muted lines. Its left
+   inset depends on the row's depth, so the code sets the padding and CSS must not. */
+.row-details .label { -fx-font-size: 12px; }
+/* The tree's folder rows; their indent is a Region the code sizes by depth. */
+.row.folder-row { -fx-min-height: 38; -fx-padding: 2 16 2 16; }
+.folder-glyphs { -fx-min-width: 24; -fx-max-width: 24; }
+.caret { -fx-text-fill: -fs-muted; -fx-font-size: 10px; -fx-min-width: 9; }
+.folder-icon { -fx-min-width: 13; -fx-min-height: 11; -fx-max-width: 13; -fx-max-height: 11;
+               -fx-shape: "M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2.2h8.4A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z";
+               -fx-background-color: transparent; -fx-border-color: -fs-muted; -fx-border-width: 1.4; }
+.folder-name { -fx-font-family: "Outfit Medium"; }
+/* A group of changes that happened together. A suspicious one still waiting for its
+   decision has a risk bar on its left edge: the card's left side, drawn wider in risk. */
+.row.group-row { -fx-min-height: 52; -fx-padding: 6 16 6 14; }
+.row.group-row.suspicious { -fx-border-color: -fs-line -fs-card-line transparent -fs-risk;
+                            -fx-border-width: 1 1 0 3; }
+.row.group-row.suspicious.last { -fx-border-color: -fs-line -fs-card-line -fs-card-line -fs-risk;
+                                 -fx-border-width: 1 1 1 3; }
+.stack-icon { -fx-min-width: 13; -fx-min-height: 12; -fx-max-width: 13; -fx-max-height: 12;
+              -fx-shape: "M12 3 2 8l10 5 10-5-10-5z M2 13l10 5 10-5 M2 17l10 5 10-5";
+              -fx-background-color: transparent; -fx-border-color: -fs-muted; -fx-border-width: 1.3; }
+/* Where a gate item comes from, at the top right of its card. */
+.kind-tag { -fx-font-size: 11px; -fx-text-fill: -fs-faint; -fx-border-color: -fs-line2; -fx-border-radius: 10;
+            -fx-padding: 0 7 0 7; }
+/* The history baseline chart on its gate card. Not chart-*: modena styles those names. */
+.baseline-bar { -fx-background-color: -fs-acc-45; -fx-background-radius: 2 2 0 0; }
+.baseline-bar.over, .baseline-bar.today { -fx-background-color: -fs-risk; }
+.baseline-band { -fx-background-color: -fs-ok-13; }
+.baseline-limit { -fx-border-color: -fs-risk-70; -fx-border-width: 1.5 0 0 0; -fx-border-style: dashed; }
+.baseline-legend .label { -fx-font-size: 11px; -fx-text-fill: -fs-faint; }
+.link-text { -fx-text-fill: -fs-acc-text; -fx-underline: true; -fx-cursor: hand; }
+.folder-meta { -fx-font-size: 12px; -fx-text-fill: -fs-muted; }
 .dir-hdd { -fx-text-fill: -fs-hdd; }
 .dir-lap { -fx-text-fill: -fs-lap; }
 .dir-risk { -fx-text-fill: -fs-risk; }
@@ -345,14 +382,42 @@
 .detail-card { -fx-background-color: -fs-panel; -fx-background-radius: 20;
                -fx-border-color: -fs-card-line; -fx-border-radius: 20;
                -fx-effect: dropshadow(gaussian, -fs-card-shadow, 24, 0, 0, 8); }
-.detail-grip { -fx-cursor: h-resize; }
+/* Drag edges: the sidebar's beside it, the panel's left of it, each in its own space. The
+   panel's is 14 wide so that with the panel's 14 off the window edge it makes
+   PaneWidths.DETAIL_EDGE. */
+.pane-grip { -fx-cursor: h-resize; }
+.side-grip { -fx-min-width: 7; -fx-pref-width: 7; -fx-max-width: 7; }
+.side-grip:hover { -fx-background-color: -fs-acc-30; }
+/* Above the card in drawing and picking order: the card's shadow reaches 24 to its left,
+   and a node is picked by its bounds with the effect, so the shadow would take the grip's clicks. */
+.detail-grip { -fx-min-width: 14; -fx-pref-width: 14; -fx-max-width: 14; -fx-view-order: -1; }
+.detail-grip:hover { -fx-background-color: -fs-acc-30; -fx-background-insets: 14 2 14 2;
+                     -fx-background-radius: 5; }
 .detail-head { -fx-padding: 14 16 12 16; -fx-border-color: -fs-line; -fx-border-width: 0 0 1 0; }
 .detail-name { -fx-font-family: "Outfit SemiBold"; }
 .cmp-card { -fx-background-color: -fs-line, -fs-raise; -fx-background-insets: 0, 1;
             -fx-background-radius: 14, 13; -fx-padding: 10 12 10 12; }
 .cmp-size { -fx-font-family: "Outfit Medium"; }
+/* The analysis card under the size cards: the flagged copy's value in risk colour. */
+.an-value { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 12px; }
+.an-bad { -fx-text-fill: -fs-risk; -fx-font-family: "IBM Plex Mono Medm"; }
+/* The anomaly model: warn throughout, risk is kept for the gate. */
+.odd-line { -fx-text-fill: -fs-warn; -fx-font-family: "Outfit Medium"; -fx-font-size: 12px; }
+.score-track { -fx-background-color: -fs-line2; -fx-background-radius: 3; }
+.score-fill { -fx-background-radius: 3; }
+.score-fill.odd { -fx-background-color: -fs-warn; }
+.score-fill.usual { -fx-background-color: -fs-ok; }
 .newer { -fx-font-size: 11px; -fx-text-fill: -fs-ok; }
 .detail-note { -fx-padding: 16; -fx-text-fill: -fs-muted; }
+/* A copy's first bytes under the note: offset, eight hex cells, the same eight as characters. */
+.hex-view { -fx-padding: 0 16 16 16; }
+.hex-offset { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; -fx-text-fill: -fs-faint;
+              -fx-min-width: 16; }
+.hex-cell { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; -fx-min-width: 19; -fx-pref-width: 19;
+            -fx-alignment: center; -fx-background-radius: 3; }
+.hex-char { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; -fx-text-fill: -fs-muted;
+            -fx-background-radius: 2; }
+.hex-cell.differs, .hex-char.differs { -fx-background-color: -fs-warn-30; }
 .diff-toolbar { -fx-padding: 8 12 8 12; -fx-border-color: -fs-line; -fx-border-width: 0 0 1 0; }
 .diff-toolbar .seg-opt { -fx-min-height: 22; -fx-pref-height: 22; -fx-padding: 0 8 0 8; }
 .diff-list { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; -fx-fixed-cell-size: 20; }

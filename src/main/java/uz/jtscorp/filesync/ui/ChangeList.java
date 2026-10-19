@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Which of a plan's changes and conflicts the review screen lists, and in what order. Free
@@ -22,7 +23,9 @@ final class ChangeList {
 
     enum Filter {
         ALL("filter.all"), TO_HDD("filter.hdd"), TO_LAPTOP("filter.laptop"), DELETES("filter.deletes"),
-        OVERWRITES("filter.overwrites");
+        OVERWRITES("filter.overwrites"),
+        /** The changes the anomaly model marks; not a kind, so {@link #of} never gives it. */
+        ODD("filter.odd");
 
         private final String key;
 
@@ -36,6 +39,11 @@ final class ChangeList {
 
         boolean matches(SyncAction action) {
             return this == ALL || this == of(action);
+        }
+
+        /** @param odd whether the model marks a path; only {@link #ODD} asks it */
+        boolean matches(SyncAction action, Predicate<String> odd) {
+            return this == ODD ? odd.test(action.relativePath()) : matches(action);
         }
 
         /** A deletion is its own kind whichever side it lands on: it is what a reader looks for. */
@@ -81,7 +89,9 @@ final class ChangeList {
     }
 
     enum Sort {
-        PATH("sort.path"), NAME("sort.name"), SIZE("sort.size"), DATE("sort.date");
+        PATH("sort.path"), NAME("sort.name"), SIZE("sort.size"), DATE("sort.date"),
+        /** The model's score, most unusual first; offered only while the model is on. */
+        ANOMALY("sort.anomaly");
 
         private final String key;
 
@@ -99,7 +109,15 @@ final class ChangeList {
     private ChangeList() {}
 
     static long count(List<SyncAction> changes, Filter filter) {
-        return changes.stream().filter(filter::matches).count();
+        return count(changes, filter, Map.of());
+    }
+
+    static long count(List<SyncAction> changes, Filter filter, Map<String, Oddity.Mark> marks) {
+        return changes.stream().filter(a -> filter.matches(a, odd(marks))).count();
+    }
+
+    private static Predicate<String> odd(Map<String, Oddity.Mark> marks) {
+        return path -> marks.containsKey(path) && marks.get(path).odd();
     }
 
     static long count(List<SyncAction> conflicts, Function<String, Resolution> decision,
@@ -123,13 +141,20 @@ final class ChangeList {
     static List<Entry> shownEntries(List<SyncAction> changes, List<PlanInterpreter.Rename> renames,
                                     Function<String, FilePair> facts, Filter filter, Sort sort,
                                     boolean reversed) {
+        return shownEntries(changes, renames, facts, filter, sort, reversed, Map.of());
+    }
+
+    /** @param marks the model's marks by path; empty while the model is off */
+    static List<Entry> shownEntries(List<SyncAction> changes, List<PlanInterpreter.Rename> renames,
+                                    Function<String, FilePair> facts, Filter filter, Sort sort,
+                                    boolean reversed, Map<String, Oddity.Mark> marks) {
         Set<String> hidden = renames.stream().map(PlanInterpreter.Rename::from).collect(Collectors.toSet());
         Map<String, PlanInterpreter.Rename> byTarget = renames.stream()
                 .collect(Collectors.toMap(PlanInterpreter.Rename::to, r -> r, (a, b) -> a));
-        Comparator<SyncAction> order = order(facts, sort, reversed);
+        Comparator<SyncAction> order = order(facts, sort, reversed, marks);
         return changes.stream()
                 .filter(a -> !hidden.contains(a.relativePath()))
-                .filter(filter::matches)
+                .filter(a -> filter.matches(a, odd(marks)))
                 .map(a -> new Entry(a, byTarget.get(a.relativePath())))
                 .sorted(Comparator.comparing(Entry::action, order))
                 .toList();
@@ -140,14 +165,15 @@ final class ChangeList {
                                            Function<String, Resolution> decision, ConflictFilter filter,
                                            Sort sort, boolean reversed) {
         return conflicts.stream().filter(a -> filter.matches(decision.apply(a.relativePath())))
-                .sorted(order(facts, sort, reversed)).toList();
+                .sorted(order(facts, sort, reversed, Map.of())).toList();
     }
 
     /**
      * Paths and names run A to Z, sizes largest first, dates newest first; {@code reversed}
      * turns that around. A row's size and date are the larger and the later of its two copies.
      */
-    private static Comparator<SyncAction> order(Function<String, FilePair> facts, Sort sort, boolean reversed) {
+    private static Comparator<SyncAction> order(Function<String, FilePair> facts, Sort sort, boolean reversed,
+                                                Map<String, Oddity.Mark> marks) {
         Comparator<SyncAction> order = switch (sort) {
             case PATH -> Comparator.comparing(SyncAction::relativePath);
             case NAME -> Comparator.comparing(a -> ReviewText.splitPath(a.relativePath()).name());
@@ -155,6 +181,9 @@ final class ChangeList {
                     (SyncAction a) -> size(facts.apply(a.relativePath()))).reversed();
             case DATE -> Comparator.comparing(
                     (SyncAction a) -> modified(facts.apply(a.relativePath()))).reversed();
+            // A change the model did not score -- a deletion -- comes after every scored one.
+            case ANOMALY -> Comparator.comparingDouble((SyncAction a) -> marks.containsKey(a.relativePath())
+                    ? marks.get(a.relativePath()).score() : -1).reversed();
         };
         return reversed ? order.reversed() : order;
     }

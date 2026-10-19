@@ -8,11 +8,11 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 
-/** Step 2: shows which of the Check task's three passes is running. */
+/** Step 2: shows which of the Check task's four passes is running. */
 public class CheckView {
 
-    /** The three passes of a check; each has a title and a line for what it does while it runs. */
-    private static final int STAGES = 3;
+    /** The four passes of a check; each has a title and a line for what it does while it runs. */
+    private static final int STAGES = 4;
 
     private static String title(int stage) {
         return Texts.t("check.stage" + (stage + 1) + ".title");

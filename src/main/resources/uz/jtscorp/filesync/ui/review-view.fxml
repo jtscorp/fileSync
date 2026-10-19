@@ -14,10 +14,14 @@
         <ListView fx:id="reviewList" styleClass="review-list"/>
     </center>
     <right>
-        <!-- 440 for the panel plus the 14 it floats off the window edge. -->
+      <!-- The grip has its own space left of the panel, clear of the list's scrollbar. -->
+      <HBox>
+        <Region fx:id="detailGrip" styleClass="pane-grip, detail-grip"/>
+        <!-- 440 for the panel plus the 14 it floats off the window edge; ReviewView sets the dragged width. -->
         <StackPane fx:id="detailHost" styleClass="detail-host" minWidth="454" prefWidth="454" maxWidth="454">
             <Region styleClass="detail-card"/>
         </StackPane>
+      </HBox>
     </right>
     <bottom>
         <HBox spacing="10" alignment="CENTER_LEFT" styleClass="footer-bar">

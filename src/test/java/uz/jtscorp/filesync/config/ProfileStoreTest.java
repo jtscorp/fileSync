@@ -94,4 +94,40 @@ class ProfileStoreTest {
         assertEquals(List.of("Documents"),
                 store.listProfiles().stream().map(SyncProfile::name).toList());
     }
+
+    @Test
+    void theHistoryKeepsTheLastFiftyCountsOldestFirst() throws Exception {
+        ProfileStore store = new ProfileStore(tempDir);
+        assertTrue(store.history("Documents").isEmpty());
+
+        for (int i = 1; i <= 52; i++) {
+            store.recordChanges("Documents", i);
+        }
+
+        List<Integer> history = store.history("Documents");
+        assertEquals(ProfileStore.HISTORY_KEPT, history.size());
+        assertEquals(3, history.getFirst());
+        assertEquals(52, history.getLast());
+        assertTrue(Files.exists(tempDir.resolve("Documents.history")));
+    }
+
+    @Test
+    void anUnreadableHistoryIsNoHistory() throws Exception {
+        ProfileStore store = new ProfileStore(tempDir);
+        Files.writeString(tempDir.resolve("Documents.history"), "12\nko'p\n");
+
+        // A cold start: the fixed rule is used, which is the safe direction.
+        assertTrue(store.history("Documents").isEmpty());
+    }
+
+    @Test
+    void deletingAProfileDeletesItsHistory() throws Exception {
+        ProfileStore store = new ProfileStore(tempDir);
+        store.save(new SyncProfile("Documents", Path.of("/a"), Path.of("/b"), List.of()));
+        store.recordChanges("Documents", 4);
+
+        store.delete("Documents");
+
+        assertFalse(Files.exists(tempDir.resolve("Documents.history")));
+    }
 }

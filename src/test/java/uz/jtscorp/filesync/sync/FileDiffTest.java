@@ -239,4 +239,18 @@ class FileDiffTest {
         assertFalse(facts.exists());
         assertNotNull(facts.error());
     }
+
+    @Test
+    void headReadsAtMostTheBytesAskedForAndNothingOfAnAbsentFile() throws Exception {
+        Path pdf = tempDir.resolve("a.pdf");
+        Files.write(pdf, "%PDF-1.7 and the rest of the file".getBytes());
+        Path empty = tempDir.resolve("bo'sh.txt");
+        Files.write(empty, new byte[0]);
+
+        assertArrayEquals("%PDF-1.7".getBytes(), FileDiff.head(pdf, 8));
+        assertArrayEquals("%PDF-1.7 and the rest of the file".getBytes(), FileDiff.head(pdf, 64));
+        assertArrayEquals(new byte[0], FileDiff.head(empty, 8));
+        assertNull(FileDiff.head(tempDir.resolve("yo'q.bin"), 8));
+        assertNull(FileDiff.head(tempDir, 8));
+    }
 }

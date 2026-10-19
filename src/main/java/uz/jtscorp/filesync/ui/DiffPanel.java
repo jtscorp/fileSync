@@ -10,11 +10,15 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
+import uz.jtscorp.filesync.sync.ContentSignals;
 import uz.jtscorp.filesync.sync.FileDiff;
 import uz.jtscorp.filesync.sync.FileDiff.DiffRow;
 import uz.jtscorp.filesync.sync.FileDiff.FileFacts;
@@ -47,6 +51,13 @@ final class DiffPanel {
     private SyncAction action;
     private Path laptopFile;
     private Path hddFile;
+    /** Both copies' first bytes, read by the check; the panel never reads them itself. */
+    private CheckResult.Heads heads;
+    /** What the check found in this file's bytes, or null. */
+    private ContentSignals.Finding finding;
+    /** The anomaly model's score for this file, or null; and why the model is silent, or null. */
+    private Oddity.Mark mark;
+    private String modelCold;
 
     /** The rows as displayed, and for each the changed stretch to mark (null for none). */
     private List<DiffRow> shown = List.of();
@@ -69,11 +80,16 @@ final class DiffPanel {
     }
 
     /** @param action null for a file the risk scanner flagged but Unison's plan does not list */
-    void showFile(String relativePath, SyncAction action, Path laptopFile, Path hddFile) {
+    void showFile(String relativePath, SyncAction action, Path laptopFile, Path hddFile,
+                  CheckResult.Heads heads, ContentSignals.Finding finding, Oddity.Mark mark, String modelCold) {
+        this.finding = finding;
+        this.mark = mark;
+        this.modelCold = modelCold;
         this.relativePath = relativePath;
         this.action = action;
         this.laptopFile = laptopFile;
         this.hddFile = hddFile;
+        this.heads = heads;
         currentBlock = -1;
         render();
     }
@@ -126,6 +142,12 @@ final class DiffPanel {
             note.setWrapText(true);
             note.getStyleClass().add("detail-note");
             root.getChildren().add(note);
+            // Without lines to compare, the first bytes are the evidence: %PDF against
+            // random bytes, or a page of 00. Not for a copy that could not be read.
+            boolean readable = comparison.left().error() == null && comparison.right().error() == null;
+            if (readable && ByteRows.shown(heads.laptop(), heads.hdd())) {
+                root.getChildren().add(byteView(heads.laptop(), heads.hdd()));
+            }
             return;
         }
 
@@ -167,7 +189,82 @@ final class DiffPanel {
         VBox head = new VBox(10, titleBlock(), cards);
         head.getStyleClass().add("detail-head");
         addActionLine(head);
+        // A score is shown only with a reason a person can check.
+        Oddity.Mark scored = mark != null && !mark.reasons().isEmpty() ? mark : null;
+        if (finding != null || scored != null) {
+            head.getChildren().add(analysisCard(finding, scored, modelCold));
+        } else if (modelCold != null) {
+            Label cold = new Label(modelCold);
+            cold.setWrapText(true);
+            cold.getStyleClass().addAll("faint", "small");
+            head.getChildren().add(cold);
+        }
         return head;
+    }
+
+    /**
+     * "Content analysis": what was measured on each copy, the flagged copy's value in risk
+     * colour; under it the model's score and why, or why the model is silent.
+     */
+    private static VBox analysisCard(ContentSignals.Finding finding, Oddity.Mark mark, String modelCold) {
+        Label title = new Label(Texts.t("diff.an.title"));
+        title.getStyleClass().addAll("w500", "small");
+        VBox card = new VBox(8, title);
+        card.getStyleClass().addAll("cmp-card", "an-card");
+        if (finding != null) {
+            card.getChildren().add(signalGrid(finding));
+        }
+        if (mark != null) {
+            card.getChildren().add(scoreRow(mark));
+            Label why = analysisLabel(ReviewText.reasons(mark, " · "), "muted", "small");
+            why.setWrapText(true);
+            card.getChildren().add(why);
+        } else if (modelCold != null) {
+            Label cold = analysisLabel(modelCold, "faint", "small");
+            cold.setWrapText(true);
+            card.getChildren().add(cold);
+        }
+        return card;
+    }
+
+    /** "G'ayrioddiylik", a bar filled to the score, and the score: warn from ODD up, ok below. */
+    private static HBox scoreRow(Oddity.Mark mark) {
+        Region fill = new Region();
+        fill.getStyleClass().addAll("score-fill", mark.score() >= Oddity.ODD ? "odd" : "usual");
+        Region track = new Region();
+        track.getStyleClass().add("score-track");
+        StackPane bar = new StackPane(track, fill);
+        StackPane.setAlignment(fill, Pos.CENTER_LEFT);
+        fill.maxWidthProperty().bind(bar.widthProperty().multiply(mark.score()));
+        bar.setMinHeight(6);
+        bar.setMaxHeight(6);
+        HBox.setHgrow(bar, Priority.ALWAYS);
+        HBox row = new HBox(10, analysisLabel(Texts.t("diff.an.score"), "muted", "small"), bar,
+                analysisLabel(ReviewText.decimal(mark.score()), "an-value"));
+        row.setAlignment(Pos.CENTER_LEFT);
+        return row;
+    }
+
+    private static GridPane signalGrid(ContentSignals.Finding finding) {
+        ReviewText.AnalysisRow row = ReviewText.analysis(finding);
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(4);
+        grid.add(analysisLabel(Texts.t("side.laptop"), "lap-text", "w500", "small"), 1, 0);
+        grid.add(analysisLabel(Texts.t("side.hdd"), "hdd-text", "w500", "small"), 2, 0);
+        grid.add(analysisLabel(row.label(), "muted", "small"), 0, 1);
+        grid.add(analysisLabel(row.laptop(), "an-value", finding.laptopBad() ? "an-bad" : "an-good"), 1, 1);
+        grid.add(analysisLabel(row.hdd(), "an-value", finding.laptopBad() ? "an-good" : "an-bad"), 2, 1);
+        ColumnConstraints label = new ColumnConstraints();
+        label.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().add(label);
+        return grid;
+    }
+
+    private static Label analysisLabel(String text, String... styleClasses) {
+        Label label = new Label(text);
+        label.getStyleClass().addAll(styleClasses);
+        return label;
     }
 
     /** The badge, the name and the full path of what is on screen. */
@@ -218,6 +315,57 @@ final class DiffPanel {
         HBox.setHgrow(card, Priority.ALWAYS);
         card.setMaxWidth(Double.MAX_VALUE);
         return card;
+    }
+
+    /** "File start · first 32 bytes": one block per copy, the bytes that differ marked in both. */
+    private static VBox byteView(byte[] laptop, byte[] hdd) {
+        Label title = new Label(Texts.t("diff.hex.title", FileDiff.HEAD_BYTES));
+        title.getStyleClass().addAll("w500", "small");
+        HBox head = new HBox(8, title);
+        head.setAlignment(Pos.BASELINE_LEFT);
+        if (ByteRows.compared(laptop, hdd)) {
+            Label hint = new Label(Texts.t("diff.hex.hint"));
+            hint.getStyleClass().addAll("faint", "small");
+            head.getChildren().add(hint);
+        }
+        VBox view = new VBox(10, head, byteSide(true, laptop, hdd), byteSide(false, hdd, laptop));
+        view.getStyleClass().add("hex-view");
+        return view;
+    }
+
+    private static VBox byteSide(boolean laptop, byte[] bytes, byte[] other) {
+        Label side = new Label(Texts.t(laptop ? "side.laptop" : "side.hdd"));
+        side.getStyleClass().addAll(laptop ? "lap-text" : "hdd-text", "w500", "small");
+        VBox block = new VBox(3, side);
+        if (bytes == null || bytes.length == 0) {
+            Label none = new Label(Texts.t(bytes == null ? "diff.absent" : "diff.hex.empty"));
+            none.getStyleClass().addAll("muted", "small");
+            block.getChildren().add(none);
+            return block;
+        }
+        for (ByteRows.Row row : ByteRows.of(bytes, other)) {
+            Label offset = new Label(row.offset());
+            offset.getStyleClass().add("hex-offset");
+            HBox cells = new HBox(3);
+            HBox characters = new HBox();
+            for (ByteRows.Cell cell : row.cells()) {
+                cells.getChildren().add(hexLabel(cell.hex(), "hex-cell", cell.differs()));
+                characters.getChildren().add(hexLabel(cell.character(), "hex-char", cell.differs()));
+            }
+            HBox line = new HBox(8, offset, cells, characters);
+            line.setAlignment(Pos.CENTER_LEFT);
+            block.getChildren().add(line);
+        }
+        return block;
+    }
+
+    private static Label hexLabel(String text, String styleClass, boolean differs) {
+        Label label = new Label(text);
+        label.getStyleClass().add(styleClass);
+        if (differs) {
+            label.getStyleClass().add("differs");
+        }
+        return label;
     }
 
     private HBox toolbar(ListView<Integer> list) {

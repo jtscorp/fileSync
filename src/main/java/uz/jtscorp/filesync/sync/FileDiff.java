@@ -21,6 +21,9 @@ public class FileDiff {
     /** Read far enough to catch a header-only binary; a text file this size has no NUL. */
     private static final int TEXT_PROBE_BYTES = 8192;
 
+    /** How much of each copy's start the review screen shows as bytes when it has no line diff. */
+    public static final int HEAD_BYTES = 32;
+
     /** Larger files are not diffed: the result is rendered row by row on the UI thread. */
     private static final long MAX_DIFF_BYTES = 2L * 1024 * 1024;
 
@@ -245,6 +248,18 @@ public class FileDiff {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Texts.t("filediff.stopped");
+        }
+    }
+
+    /**
+     * The first {@code n} bytes, fewer when the file is shorter. Null when there is no file
+     * to read: absent, a folder, or unreadable -- the facts say which.
+     */
+    public static byte[] head(Path file, int n) {
+        try (InputStream in = Files.newInputStream(file)) {
+            return in.readNBytes(n);
+        } catch (IOException e) {
+            return null;
         }
     }
 

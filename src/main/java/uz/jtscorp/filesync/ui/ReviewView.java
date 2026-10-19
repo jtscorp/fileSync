@@ -3,6 +3,8 @@ package uz.jtscorp.filesync.ui;
 import uz.jtscorp.filesync.Texts;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
+import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -10,6 +12,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.GridPane;
@@ -25,13 +28,16 @@ import uz.jtscorp.filesync.config.SyncProfile;
 import uz.jtscorp.filesync.sync.PlanInterpreter;
 import uz.jtscorp.filesync.sync.SyncAction;
 
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.IntToDoubleFunction;
 
 /**
  * Step 3: the plan, the risks that gate it, and the diff of the selected file. The
@@ -43,6 +49,9 @@ public class ReviewView {
         void onBackToSetup();
 
         void onApply();
+
+        /** The panel was dragged or reset to this width; the caller keeps it for the next launch. */
+        void onDetailResized(double width);
     }
 
     /** The list is one scroll of unlike things; each row type knows how it is drawn. */
@@ -53,10 +62,20 @@ public class ReviewView {
     /**
      * {@code first}/{@code last}: where the group's card gets its top and bottom edge.
      * {@code rename} is set when the row stands for a move; {@code action} is then its
-     * {@code to} row, and that path is what the row's tick and skip act on.
+     * {@code to} row, and that path is what the row's tick and skip act on. {@code indent}
+     * steps it in past the card's padding; {@code name} is what it shows -- the file name in
+     * the tree, the path below the group's folder in a group.
      */
-    private record ActionRow(SyncAction action, PlanInterpreter.Rename rename, boolean first, boolean last)
-            implements Row {}
+    private record ActionRow(SyncAction action, PlanInterpreter.Rename rename, double indent, String name,
+                             boolean first, boolean last) implements Row {}
+    /**
+     * A group of the changes that happened together, or the rest of them ({@code cluster}
+     * null). {@code entries} are its rows the filter shows, in the list's order.
+     */
+    private record GroupRow(String id, ChangeClusters.Cluster cluster, List<ChangeList.Entry> entries,
+                            boolean last) implements Row {}
+    /** A folder of the tree; {@code conflicts} says which group it belongs to, and so which ticks and state. */
+    private record FolderRow(ChangeTree.Folder folder, boolean conflicts, boolean last) implements Row {}
     private record EmptyRow() implements Row {}
     /** The changes group's title, with what narrows and orders its rows. */
     private record ChangesHeadRow() implements Row {}
@@ -69,16 +88,26 @@ public class ReviewView {
     /** The bottom edge of a card when its filter leaves it no row. */
     private record FilterEmptyRow(String text) implements Row {}
 
-    /** The detail pane's width in review-view.fxml. */
-    private static final double DETAIL_MIN_WIDTH = 454;
+    /** The group of the changes that are in no group; it is listed last. */
+    private static final String OTHER_GROUP = "#other";
+    /** A group's files step in this far past the card's padding: 58 from the card's edge. */
+    private static final double GROUP_INDENT = 42;
+
+    /** What the panel floats off the window's right edge: detailHost's right padding. */
+    private static final double DETAIL_MARGIN = 14;
 
     @FXML private ListView<Row> reviewList;
+    @FXML private Region detailGrip;
     @FXML private StackPane detailHost;
     @FXML private Label summaryLabel;
     @FXML private Label gateLabel;
     @FXML private Button applyButton;
 
     private final DiffPanel diffPanel = new DiffPanel();
+    /** The width the panel was given; the window may show it narrower without forgetting it. */
+    private double detailWanted = Double.NaN;
+    /** The width the panel is shown at now. */
+    private double detailWidth = PaneWidths.DETAIL;
     private Listener listener;
     private Map<String, Resolution> resolutions;
     private Set<String> skippedChanges;
@@ -95,6 +124,13 @@ public class ReviewView {
      */
     private final Set<String> renameSkippedFroms = new HashSet<>();
     private ChangeList.ConflictFilter conflictFilter = ChangeList.ConflictFilter.ALL;
+    /** Folders closed in each group, kept for the life of the check; every folder starts open. */
+    private final Set<String> closedChanges = new HashSet<>();
+    private final Set<String> closedConflicts = new HashSet<>();
+    /** The changes as their groups rather than their folders. */
+    private boolean groupsView;
+    /** Groups opened, kept for the life of the check; every group starts closed. */
+    private final Set<String> openGroups = new HashSet<>();
     private ChangeList.Sort conflictSort = ChangeList.Sort.PATH;
     private boolean conflictSortReversed;
     private SyncProfile profile;
@@ -119,26 +155,39 @@ public class ReviewView {
         detail.setClip(clip);
         detailHost.getChildren().add(detail);
 
-        // The strip on the panel's left edge that drags it wider. Built here, not in
-        // FXML, and the width is forgotten with the window.
-        Region grip = new Region();
-        grip.getStyleClass().add("detail-grip");
-        grip.setMaxWidth(8);
-        StackPane.setAlignment(grip, Pos.CENTER_LEFT);
-        grip.setOnMouseDragged(e ->
-                setDetailWidth(detailHost.localToScene(detailHost.getWidth(), 0).getX() - e.getSceneX()));
-        detailHost.getChildren().add(grip);
-        ((Region) detailHost.getParent()).widthProperty()
-                .addListener((obs, was, now) -> setDetailWidth(detailHost.getPrefWidth()));
+        besideSidebar().widthProperty().addListener((obs, was, now) -> showDetailWidth());
+        // The panel sits on the right, so dragging its edge left widens it.
+        PaneGrip.attach(detailGrip, -1, () -> detailWidth, wanted -> {
+            detailWanted = PaneWidths.detail(wanted, besideSidebar().getWidth());
+            showDetailWidth();
+        }, () -> {
+            detailWanted = PaneWidths.DETAIL;
+            showDetailWidth();
+        }, () -> {
+            // What was asked for, not what a narrow window shows: a reset is saved as the default.
+            if (!Double.isNaN(detailWanted)) {
+                listener.onDetailResized(detailWanted);
+            }
+        });
     }
 
-    /** Never narrower than the FXML's width, never more than half the screen: the list keeps its conflict choices. */
-    private void setDetailWidth(double wanted) {
-        double limit = Math.max(DETAIL_MIN_WIDTH, ((Region) detailHost.getParent()).getWidth() / 2);
-        double width = Math.max(DETAIL_MIN_WIDTH, Math.min(wanted, limit));
-        detailHost.setMinWidth(width);
-        detailHost.setPrefWidth(width);
-        detailHost.setMaxWidth(width);
+    /** This step's own root: everything right of the sidebar. */
+    private Region besideSidebar() {
+        return (Region) reviewList.getParent();
+    }
+
+    /** @param wanted a width saved earlier, or NaN for the default */
+    void restoreDetailWidth(double wanted) {
+        detailWanted = wanted;
+        showDetailWidth();
+    }
+
+    private void showDetailWidth() {
+        detailWidth = PaneWidths.detail(detailWanted, besideSidebar().getWidth());
+        double host = detailWidth + DETAIL_MARGIN;
+        detailHost.setMinWidth(host);
+        detailHost.setPrefWidth(host);
+        detailHost.setMaxWidth(host);
     }
 
     void init(Listener listener, Map<String, Resolution> resolutions, Set<String> skippedChanges) {
@@ -155,6 +204,10 @@ public class ReviewView {
         picked.clear();
         pickedConflicts.clear();
         renameSkippedFroms.clear();
+        closedChanges.clear();
+        closedConflicts.clear();
+        groupsView = false;
+        openGroups.clear();
         filter = ChangeList.Filter.ALL;
         conflictFilter = ChangeList.ConflictFilter.ALL;
         rebuildRows();
@@ -176,7 +229,22 @@ public class ReviewView {
     /** The changes group as the filter and the order leave it; a recognised move is one entry. */
     private List<ChangeList.Entry> shownChanges() {
         return ChangeList.shownEntries(result.changes(), result.renames(), result::factsFor, filter, sort,
-                sortReversed);
+                sortReversed, result.marks());
+    }
+
+    /** The model is off until the profile has enough history; its chip and order are hidden then. */
+    private boolean modelOn() {
+        return result.baseline().enough();
+    }
+
+    /** The model's mark is not shown where something louder already speaks for the file. */
+    private boolean showsOdd(String path) {
+        Oddity.Mark mark = result.marks().get(path);
+        if (mark == null || !mark.odd() || gate.isFileItem(path)) {
+            return false;
+        }
+        // A suspicious group's line speaks once for all its files.
+        return gate.items().stream().noneMatch(i -> i.kind() == RiskGate.Kind.CLUSTER && i.members().contains(path));
     }
 
     private static List<String> paths(List<ChangeList.Entry> entries) {
@@ -224,13 +292,16 @@ public class ReviewView {
         if (!conflicts.isEmpty()) {
             rows.add(new ConflictsHeadRow());
             rows.add(new ConflictBulkRow());
-            addCard(rows, shownConflicts().stream().map(a -> new ChangeList.Entry(a, null)).toList(),
+            addCard(rows, treeRows(ChangeTree.flatten(shownConflicts().stream().map(a -> new ChangeList.Entry(a, null))
+                    .toList(), closedConflicts, conflictSort, conflictSortReversed), true),
                     Texts.t("review.conflictFilterEmpty"));
         }
         if (!result.changes().isEmpty()) {
             rows.add(new ChangesHeadRow());
             rows.add(new BulkRow());
-            addCard(rows, shownChanges(), Texts.t("review.filterEmpty"));
+            addCard(rows, groupsView ? groupRows(shownChanges())
+                            : treeRows(ChangeTree.flatten(shownChanges(), closedChanges, sort, sortReversed), false),
+                    Texts.t("review.filterEmpty"));
         }
         if (result.actions().isEmpty()) {
             rows.add(new EmptyRow());
@@ -239,13 +310,79 @@ public class ReviewView {
     }
 
     /** The bulk bar is the card's top edge, so no row is ever the first. */
-    private static void addCard(List<Row> rows, List<ChangeList.Entry> shown, String emptyText) {
-        for (int i = 0; i < shown.size(); i++) {
-            ChangeList.Entry entry = shown.get(i);
-            rows.add(new ActionRow(entry.action(), entry.rename(), false, i == shown.size() - 1));
-        }
-        if (shown.isEmpty()) {
+    private static void addCard(List<Row> rows, List<Row> card, String emptyText) {
+        rows.addAll(card);
+        if (card.isEmpty()) {
             rows.add(new FilterEmptyRow(emptyText));
+        }
+    }
+
+    private static List<Row> treeRows(List<ChangeTree.Node> nodes, boolean conflicts) {
+        List<Row> card = new ArrayList<>();
+        for (int i = 0; i < nodes.size(); i++) {
+            boolean last = i == nodes.size() - 1;
+            card.add(switch (nodes.get(i)) {
+                case ChangeTree.Folder folder -> new FolderRow(folder, conflicts, last);
+                case ChangeTree.Leaf leaf -> new ActionRow(leaf.entry().action(), leaf.entry().rename(),
+                        leaf.depth() * INDENT_STEP, ReviewText.splitPath(leaf.entry().action().relativePath()).name(),
+                        false, last);
+            });
+        }
+        return card;
+    }
+
+    /**
+     * The changes as the groups they happened in, largest first, then the ones that changed
+     * on their own. Each group keeps the list's filter and order for its rows.
+     */
+    private List<Row> groupRows(List<ChangeList.Entry> shown) {
+        List<Row> card = new ArrayList<>();
+        Set<String> grouped = new HashSet<>();
+        for (ChangeClusters.Cluster cluster : result.clusters()) {
+            Set<String> members = new HashSet<>(cluster.paths());
+            grouped.addAll(members);
+            addGroup(card, cluster.id(), cluster,
+                    shown.stream().filter(e -> members.contains(e.action().relativePath())).toList());
+        }
+        addGroup(card, OTHER_GROUP, null,
+                shown.stream().filter(e -> !grouped.contains(e.action().relativePath())).toList());
+        if (!card.isEmpty()) {
+            card.set(card.size() - 1, switch (card.getLast()) {
+                case GroupRow r -> new GroupRow(r.id(), r.cluster(), r.entries(), true);
+                case ActionRow r -> new ActionRow(r.action(), r.rename(), r.indent(), r.name(), r.first(), true);
+                default -> card.getLast();
+            });
+        }
+        return card;
+    }
+
+    private void addGroup(List<Row> card, String id, ChangeClusters.Cluster cluster, List<ChangeList.Entry> entries) {
+        if (entries.isEmpty()) {
+            return;
+        }
+        card.add(new GroupRow(id, cluster, entries, false));
+        if (openGroups.contains(id)) {
+            // The group row carries the folder; each file shows only what lies below it.
+            String prefix = cluster == null || cluster.prefix().isEmpty() ? "" : cluster.prefix() + "/";
+            for (ChangeList.Entry entry : entries) {
+                String path = entry.action().relativePath();
+                card.add(new ActionRow(entry.action(), entry.rename(), GROUP_INDENT,
+                        path.startsWith(prefix) ? path.substring(prefix.length()) : path, false, false));
+            }
+        }
+    }
+
+    /** Switches the changes to their groups and opens this one -- where a group card or a mass change points. */
+    private void showGroup(String id) {
+        groupsView = true;
+        openGroups.add(id);
+        rebuildRows();
+        List<Row> rows = reviewList.getItems();
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i) instanceof GroupRow group && group.id().equals(id)) {
+                reviewList.scrollTo(i);
+                break;
+            }
         }
     }
 
@@ -257,6 +394,9 @@ public class ReviewView {
         picked.clear();
         pickedConflicts.clear();
         renameSkippedFroms.clear();
+        closedChanges.clear();
+        closedConflicts.clear();
+        openGroups.clear();
         reviewList.setItems(FXCollections.observableArrayList());
         diffPanel.clear();
         applyButton.setDisable(true);
@@ -275,8 +415,13 @@ public class ReviewView {
             // A folder has no diff; what goes with it is the thing to look at.
             diffPanel.showFolder(path, result.actionFor(path).orElse(null), folder);
         } else {
-            diffPanel.showFile(path, result.actionFor(path).orElse(null),
-                    profile.laptopRoot().resolve(path), profile.hddRoot().resolve(path));
+            SyncAction action = result.actionFor(path).orElse(null);
+            boolean scorable = action != null && action.actionType() != SyncAction.ActionType.CONFLICT
+                    && action.actionType() != SyncAction.ActionType.DELETED;
+            diffPanel.showFile(path, action,
+                    profile.laptopRoot().resolve(path), profile.hddRoot().resolve(path), result.headsFor(path),
+                    gate.item(path).map(RiskGate.Item::finding).orElse(null), result.marks().get(path),
+                    scorable && !modelOn() ? ReviewText.modelCold(result.baseline().history().size()) : null);
         }
         refresh();
     }
@@ -312,17 +457,20 @@ public class ReviewView {
      * this -- {@link ApplyPlan#skipped} leaves both halves of a skipped move out by itself.
      */
     private void cascadeToFrom(String from, boolean skip) {
-        if (skip && gate.isPendingFile(from)) {
-            gate.setSkipped(from, true);
+        boolean waiting = gate.isPendingFile(from)
+                || (gate.keepsSkip(from) && !gate.isFileItem(from) && !gate.isSkipped(from));
+        if (skip && waiting) {
+            gate.setPathSkipped(from, true);
             renameSkippedFroms.add(from);
         } else if (!skip && renameSkippedFroms.remove(from)) {
-            gate.setSkipped(from, false);
+            gate.setPathSkipped(from, false);
         }
     }
 
+    /** A flagged file or a file of a suspicious group keeps its skip in the gate, where it counts as a decision. */
     private void skipOne(String path, boolean value) {
-        if (gate.isFileItem(path)) {
-            gate.setSkipped(path, value);
+        if (gate.keepsSkip(path)) {
+            gate.setPathSkipped(path, value);
         } else if (value) {
             skippedChanges.add(path);
         } else {
@@ -389,6 +537,8 @@ public class ReviewView {
                 case RiskHeadRow r -> riskHead();
                 case RiskRow r -> riskItem(r.item(), r.last());
                 case ActionRow r -> actionRow(r);
+                case FolderRow r -> folderRow(r);
+                case GroupRow r -> groupRow(r);
                 case EmptyRow r -> emptyRow();
                 case ChangesHeadRow r -> changesHead();
                 case BulkRow r -> bulkRow();
@@ -492,28 +642,33 @@ public class ReviewView {
         return head;
     }
 
+    /**
+     * A gate card. The whole card is clickable: a file's selects that file, a group's opens
+     * the group, a mass change opens the largest group, the exit-1 card shows Unison's
+     * output; the rest have nothing to show.
+     */
     private Node riskItem(RiskGate.Item item, boolean last) {
         boolean acknowledged = gate.isAcknowledged(item.key());
-        boolean skipped = gate.isSkipped(item.key());
+        boolean skipped = item.isGroup() ? gate.isGroupSkipped(item.key()) : gate.isSkipped(item.key());
+        boolean exitOne = RiskGate.EXIT_ONE_KEY.equals(item.key());
 
-        Label title = label(item.title(), item.isFile() || RiskGate.EXIT_ONE_KEY.equals(item.key())
-                ? "risk-path" : "w500");
-        HBox top = new HBox(10, title);
-        top.setAlignment(Pos.CENTER_LEFT);
-        if (item.isFile()) {
-            title.setOnMouseClicked(e -> select(item.path()));
-            top.getChildren().add(label(ReviewText.riskShort(
-                    result.actionFor(item.path()).orElse(null), result.factsFor(item.path())), "risk-tag"));
-        } else if (RiskGate.EXIT_ONE_KEY.equals(item.key())) {
-            // Unison's raw output is the only place that says what was skipped.
-            title.setOnMouseClicked(e -> {
-                selectedPath = null;
-                diffPanel.showText(Texts.t("review.unisonOutput"), result.rawOutput());
-                reviewList.refresh();
-            });
+        Label title = label(item.title(), item.isFile() || exitOne ? "risk-path" : "w500");
+        title.setWrapText(true);
+        Label shortLabel = item.isFile() ? label(riskShortFor(item.path()), "risk-tag") : null;
+        HBox right = new HBox(10);
+        right.setAlignment(Pos.CENTER_RIGHT);
+        String tag = switch (item.kind()) {
+            case MASS_CHANGE -> "gate.kind.fixed";
+            case BASELINE -> "gate.kind.baseline";
+            case CLUSTER -> "gate.kind.cluster";
+            case CONTENT -> "gate.kind.content";
+            default -> null;
+        };
+        if (tag != null) {
+            right.getChildren().add(fixed(label(Texts.t(tag), "kind-tag")));
         }
-        top.getChildren().addAll(spacer(),
-                label(ReviewText.riskState(acknowledged, skipped), "muted", "small"));
+        right.getChildren().add(fixed(label(ReviewText.riskState(acknowledged, skipped), "muted", "small")));
+        CardHead top = new CardHead(title, shortLabel, right);
 
         Label reason = label(item.reason(), "muted");
         reason.setWrapText(true);
@@ -527,7 +682,8 @@ public class ReviewView {
             gate.setAcknowledged(item.key(), !acknowledged);
             afterDecision(item);
         });
-        HBox decisions = new HBox(8, acknowledge);
+        // The buttons go to the next line rather than lose their words in a narrow card.
+        FlowPane decisions = new FlowPane(8, 8, ownClick(acknowledge));
         if (item.isFile()) {
             // Only a file can sit a run out; a mass change is the run.
             Button skip = new Button(Texts.t("review.skip"));
@@ -539,17 +695,218 @@ public class ReviewView {
                 gate.setSkipped(item.key(), !skipped);
                 afterDecision(item);
             });
-            decisions.getChildren().add(skip);
+            decisions.getChildren().add(ownClick(skip));
+        } else if (item.isGroup()) {
+            // Skipping is the safe direction, so a whole group may sit this run out at once.
+            Button skipGroup = new Button(Texts.t("review.group.skip"));
+            skipGroup.getStyleClass().add("toggle-btn");
+            if (skipped) {
+                skipGroup.getStyleClass().add("on");
+            }
+            skipGroup.setOnAction(e -> {
+                gate.setGroupSkipped(item.key(), !skipped);
+                afterDecision(item);
+            });
+            Label show = label(Texts.t("review.group.show"), "link-text");
+            show.setOnMouseClicked(e -> {
+                e.consume();
+                showGroup(item.key());
+            });
+            decisions.getChildren().addAll(ownClick(skipGroup), show);
+            decisions.setAlignment(Pos.CENTER_LEFT);
         }
 
         VBox inner = new VBox(8, top, reason, decisions);
+        if (item.kind() == RiskGate.Kind.BASELINE) {
+            inner.getChildren().add(2, baselineChart(result.baseline()));
+        }
         inner.getStyleClass().add("risk-inner");
+        if (item.isFile()) {
+            inner.getStyleClass().add("clickable");
+            inner.setOnMouseClicked(e -> select(item.path()));
+            if (item.path().equals(selectedPath)) {
+                inner.getStyleClass().add("selected");
+            }
+        } else if (item.isGroup()) {
+            inner.getStyleClass().add("clickable");
+            inner.setOnMouseClicked(e -> showGroup(item.key()));
+        } else if ((item.kind() == RiskGate.Kind.MASS_CHANGE || item.kind() == RiskGate.Kind.BASELINE)
+                && !result.clusters().isEmpty()) {
+            // No single file to show; the largest group is where most of the change is.
+            String largest = result.clusters().getFirst().id();
+            inner.getStyleClass().add("clickable");
+            inner.setOnMouseClicked(e -> showGroup(largest));
+        } else if (exitOne) {
+            inner.getStyleClass().add("clickable");
+            // Unison's raw output is the only place that says what was skipped.
+            inner.setOnMouseClicked(e -> {
+                selectedPath = null;
+                diffPanel.showText(Texts.t("review.unisonOutput"), result.rawOutput());
+                reviewList.refresh();
+            });
+        }
         VBox outer = new VBox(inner);
         outer.getStyleClass().add("risk-item");
         if (last) {
             outer.getStyleClass().add("last");
         }
         return outer;
+    }
+
+    /**
+     * A risk card's first line: the title, the short label after it, and the kind tag and
+     * state at the right edge. When they do not fit on one line the title takes a line of its
+     * own -- wrapping only if it alone is wider than the card -- and the rest goes under it.
+     */
+    private static final class CardHead extends Region {
+        private static final double GAP = 10;
+        private static final double LINE_GAP = 4;
+        private final Label title;
+        private final Label shortLabel;
+        private final Region right;
+
+        CardHead(Label title, Label shortLabel, Region right) {
+            this.title = title;
+            this.shortLabel = shortLabel;
+            this.right = right;
+            getChildren().add(title);
+            if (shortLabel != null) {
+                getChildren().add(shortLabel);
+            }
+            getChildren().add(right);
+        }
+
+        @Override
+        public Orientation getContentBias() {
+            return Orientation.HORIZONTAL;
+        }
+
+        private double shortWidth() {
+            return shortLabel == null ? 0 : shortLabel.prefWidth(-1) + GAP;
+        }
+
+        private boolean oneLine(double width) {
+            return title.prefWidth(-1) + shortWidth() + GAP + right.prefWidth(-1) <= width;
+        }
+
+        @Override
+        protected double computePrefWidth(double height) {
+            return title.prefWidth(-1) + shortWidth() + GAP + right.prefWidth(-1);
+        }
+
+        @Override
+        protected double computeMinWidth(double height) {
+            return 0;
+        }
+
+        @Override
+        protected double computePrefHeight(double width) {
+            double rest = Math.max(shortLabel == null ? 0 : shortLabel.prefHeight(-1), right.prefHeight(-1));
+            if (width < 0 || oneLine(width)) {
+                return Math.max(title.prefHeight(-1), rest);
+            }
+            return title.prefHeight(width) + LINE_GAP + rest;
+        }
+
+        @Override
+        protected void layoutChildren() {
+            double width = getWidth();
+            double rightWidth = right.prefWidth(-1);
+            double rightHeight = right.prefHeight(-1);
+            if (oneLine(width)) {
+                double titleWidth = title.prefWidth(-1);
+                double height = Math.max(title.prefHeight(-1), rightHeight);
+                title.resizeRelocate(0, 0, titleWidth, title.prefHeight(-1));
+                if (shortLabel != null) {
+                    shortLabel.resizeRelocate(titleWidth + GAP, 0, shortLabel.prefWidth(-1), shortLabel.prefHeight(-1));
+                }
+                right.resizeRelocate(width - rightWidth, (height - rightHeight) / 2, rightWidth, rightHeight);
+                return;
+            }
+            double titleHeight = title.prefHeight(width);
+            title.resizeRelocate(0, 0, width, titleHeight);
+            double y = titleHeight + LINE_GAP;
+            if (shortLabel != null) {
+                shortLabel.resizeRelocate(0, y, shortLabel.prefWidth(-1), shortLabel.prefHeight(-1));
+            }
+            right.resizeRelocate(Math.max(0, width - rightWidth), y, rightWidth, rightHeight);
+        }
+    }
+
+    /** A flagged file's few words: what its bytes say when they say something, else its size drop. */
+    private String riskShortFor(String path) {
+        return gate.item(path).map(RiskGate.Item::finding).map(ReviewText::signalShort)
+                .orElseGet(() -> ReviewText.riskShort(result.actionFor(path).orElse(null), result.factsFor(path)));
+    }
+
+    /** How tall the baseline chart is; a value's bar is this share of the scale's top. */
+    private static final double CHART_HEIGHT = 56;
+
+    /**
+     * The past syncs as bars, today's last and in risk colour; the usual range shaded behind
+     * them and this profile's limit dashed across.
+     */
+    private static VBox baselineChart(Baseline baseline) {
+        double top = baseline.chartTop();
+        IntToDoubleFunction y = value -> Math.round(CHART_HEIGHT * value / top);
+
+        HBox bars = new HBox(3);
+        bars.setAlignment(Pos.BOTTOM_LEFT);
+        bars.setFillHeight(false);
+        for (int value : baseline.history()) {
+            String state = value > baseline.limit() ? "over" : null;
+            bars.getChildren().add(chartBar(Math.max(2, y.applyAsDouble(value)), state));
+        }
+        bars.getChildren().add(chartBar(y.applyAsDouble(baseline.today()), "today"));
+
+        Region band = new Region();
+        band.getStyleClass().add("baseline-band");
+        double bandHeight = Math.max(2, y.applyAsDouble(baseline.high()) - y.applyAsDouble(baseline.low()));
+        band.setMinHeight(bandHeight);
+        band.setMaxHeight(bandHeight);
+        StackPane.setAlignment(band, Pos.BOTTOM_CENTER);
+        StackPane.setMargin(band, new Insets(0, 0, y.applyAsDouble(baseline.low()), 0));
+
+        Region limit = new Region();
+        limit.getStyleClass().add("baseline-limit");
+        limit.setMinHeight(2);
+        limit.setMaxHeight(2);
+        StackPane.setAlignment(limit, Pos.BOTTOM_CENTER);
+        StackPane.setMargin(limit, new Insets(0, 0, y.applyAsDouble(baseline.limit()), 0));
+
+        StackPane chart = new StackPane(band, bars, limit);
+        chart.setMinHeight(CHART_HEIGHT);
+        chart.setPrefHeight(CHART_HEIGHT);
+        chart.setMaxHeight(CHART_HEIGHT);
+        chart.setMinWidth(0);
+
+        HBox legend = new HBox(10, label(Texts.t("review.chart.from", baseline.history().size())), spacer(),
+                label("▬ " + Texts.t("review.chart.band")), label("┄ " + Texts.t("review.chart.limit")), spacer(),
+                label(Texts.t("review.chart.today")));
+        legend.getStyleClass().add("baseline-legend");
+        return new VBox(4, chart, legend);
+    }
+
+    private static Region chartBar(double height, String state) {
+        Region bar = new Region();
+        bar.getStyleClass().add("baseline-bar");
+        if (state != null) {
+            bar.getStyleClass().add(state);
+        }
+        bar.setMinHeight(height);
+        bar.setPrefHeight(height);
+        bar.setMaxHeight(height);
+        bar.setMinWidth(1);
+        bar.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(bar, Priority.ALWAYS);
+        return bar;
+    }
+
+    /** A button's click is its own decision and must not also select the card it sits on. */
+    private static Button ownClick(Button button) {
+        button.setMinWidth(Region.USE_PREF_SIZE);
+        button.addEventHandler(MouseEvent.MOUSE_CLICKED, MouseEvent::consume);
+        return button;
     }
 
     private void afterDecision(RiskGate.Item item) {
@@ -562,18 +919,27 @@ public class ReviewView {
 
     private Node changesHead() {
         List<SyncAction> changes = result.changes();
-        HBox top = new HBox(10, label(Texts.t("review.changes", changes.size()), "group-title"), spacer(),
-                sortButtons(sort, sortReversed, option -> {
+        HBox views = new HBox(viewOption(Texts.t("review.view.tree"), false),
+                viewOption(Texts.t("review.view.groups"), true));
+        views.getStyleClass().addAll("seg", "sort-seg");
+        Tooltip.install(views, new Tooltip(Texts.t("review.view.title")));
+        // Wraps rather than cuts: the orders move to their own line when the list is narrow.
+        FlowPane top = new FlowPane(10, 6, label(Texts.t("review.changes", changes.size()), "group-title"), views,
+                sortButtons(sortOptions(modelOn()), sort, sortReversed, option -> {
                     sortReversed = option == sort && !sortReversed;
                     sort = option;
                     rebuildRows();
                 }));
         top.setAlignment(Pos.CENTER_LEFT);
 
-        // On their own line: beside the title and the orders they do not fit the list's width.
-        HBox filters = new HBox(4);
+        // On their own line, and wrapping like the conflicts' chips: a row wider than the list
+        // would also widen the whole head, and the orders above would be cut instead of wrapped.
+        FlowPane filters = new FlowPane(4, 4);
         for (ChangeList.Filter option : ChangeList.Filter.values()) {
-            filters.getChildren().add(filterChip(option.label(), ChangeList.count(changes, option),
+            if (option == ChangeList.Filter.ODD && !modelOn()) {
+                continue;
+            }
+            filters.getChildren().add(filterChip(option.label(), ChangeList.count(changes, option, result.marks()),
                     tone(option), option == filter, () -> {
                         filter = option;
                         rebuildRows();
@@ -584,10 +950,23 @@ public class ReviewView {
         return head;
     }
 
+    private Button viewOption(String text, boolean groups) {
+        Button button = new Button(text);
+        button.getStyleClass().add("seg-opt");
+        if (groups == groupsView) {
+            button.getStyleClass().addAll("on", "neutral");
+        }
+        button.setOnAction(e -> {
+            groupsView = groups;
+            rebuildRows();
+        });
+        return button;
+    }
+
     private Node conflictsHead() {
         List<SyncAction> conflicts = result.conflicts();
         HBox top = new HBox(10, label(Texts.t("review.conflicts", conflicts.size()), "group-title"), spacer(),
-                sortButtons(conflictSort, conflictSortReversed, option -> {
+                sortButtons(sortOptions(false), conflictSort, conflictSortReversed, option -> {
                     conflictSortReversed = option == conflictSort && !conflictSortReversed;
                     conflictSort = option;
                     rebuildRows();
@@ -610,10 +989,17 @@ public class ReviewView {
     }
 
     /** The arrow marks the order in use; a second click on it turns the order around. */
-    private static HBox sortButtons(ChangeList.Sort current, boolean reversed, Consumer<ChangeList.Sort> onPick) {
+    /** The model's order only where the model scored something: changes, while it is on. */
+    private static List<ChangeList.Sort> sortOptions(boolean anomaly) {
+        return Arrays.stream(ChangeList.Sort.values())
+                .filter(option -> anomaly || option != ChangeList.Sort.ANOMALY).toList();
+    }
+
+    private static HBox sortButtons(List<ChangeList.Sort> options, ChangeList.Sort current, boolean reversed,
+                                    Consumer<ChangeList.Sort> onPick) {
         HBox sorts = new HBox();
         sorts.getStyleClass().addAll("seg", "sort-seg");
-        for (ChangeList.Sort option : ChangeList.Sort.values()) {
+        for (ChangeList.Sort option : options) {
             Button button = new Button(option.label(option == current, reversed));
             button.getStyleClass().add("seg-opt");
             if (option == current) {
@@ -647,6 +1033,8 @@ public class ReviewView {
             case TO_HDD -> "hdd";
             case TO_LAPTOP -> "lap";
             case DELETES, OVERWRITES -> "risk";
+            // Warn is the model's colour throughout; risk is kept for the gate.
+            case ODD -> "warn";
         };
     }
 
@@ -772,21 +1160,38 @@ public class ReviewView {
         return label(Texts.t("review.empty"), "empty-row");
     }
 
+    /** Every tree level steps in by this much; the card's own padding is the first 16. */
+    private static final double INDENT_STEP = 22;
+    /**
+     * Where the lines under a row start -- a conflict's choice, the details: past the
+     * checkbox and the badge, at the name.
+     */
+    private static final double DETAILS_INSET = 44;
+
+    /** In a narrow row the name gives way, never this label. */
+    private static Label fixed(Label label) {
+        label.setMinWidth(Region.USE_PREF_SIZE);
+        return label;
+    }
+
+    private static Region indent(double width) {
+        Region indent = new Region();
+        indent.setMinWidth(width);
+        indent.setMaxWidth(width);
+        return indent;
+    }
+
     private Node actionRow(ActionRow item) {
         SyncAction action = item.action();
         String path = action.relativePath();
-        ReviewText.PathParts parts = ReviewText.splitPath(path);
-
-        HBox pathLine = new HBox(label(parts.dir(), "path-dir"), label(parts.name(), "path-name"));
-        pathLine.setAlignment(Pos.CENTER_LEFT);
-        pathLine.setMinWidth(0);
-        VBox name = new VBox(2, pathLine);
-        name.getChildren().addAll(rowDetails(path, item.rename()));
+        // The folder or group row above carries the rest of the path.
+        Label name = label(item.name(), "path-name");
         name.setMinWidth(0);
+        name.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(name, Priority.ALWAYS);
 
         boolean conflict = action.actionType() == SyncAction.ActionType.CONFLICT;
-        HBox row = new HBox(10);
+        HBox line = new HBox(10, indent(item.indent()));
         Set<String> ticks = conflict ? pickedConflicts : picked;
         Label box = checkBox(ticks.contains(path) ? "✓" : "");
         box.setOnMouseClicked(e -> {
@@ -797,9 +1202,32 @@ public class ReviewView {
             }
             refresh();
         });
-        row.getChildren().add(box);
-        row.getChildren().addAll(DiffPanel.badge(action.actionType()), name);
-        row.setAlignment(Pos.CENTER_LEFT);
+        line.getChildren().addAll(box, DiffPanel.badge(action.actionType()), name);
+        line.setAlignment(Pos.CENTER_LEFT);
+
+        boolean skipped = isSkipped(path);
+        HBox choice = null;
+        if (conflict) {
+            Node picker = resolutionPicker(path);
+            // Skipping wins over any choice here, so the choice must not look live.
+            picker.setDisable(skipped);
+            // On its own line under the name: beside it, the choices left the name no room.
+            choice = new HBox(picker);
+            choice.getStyleClass().add("row-choice");
+            choice.setPadding(new Insets(2, 0, 2, item.indent() + DETAILS_INSET));
+        } else {
+            Label direction = skipped ? label(ReviewText.skippedDirection(), "dir-text", "dir-skip")
+                    : label(ReviewText.direction(action), "dir-text", "dir-" + tone(ChangeList.Filter.of(action)));
+            VBox right = new VBox(2, fixed(direction),
+                    fixed(label(ReviewText.sizes(action, result.factsFor(path)), "sizes")));
+            right.getStyleClass().add("right-col");
+            line.getChildren().add(right);
+        }
+
+        VBox row = new VBox(line);
+        if (choice != null) {
+            row.getChildren().add(choice);
+        }
         row.getStyleClass().add("row");
         if (item.first()) {
             row.getStyleClass().add("first");
@@ -810,29 +1238,187 @@ public class ReviewView {
         if (path.equals(selectedPath)) {
             row.getStyleClass().add("selected");
         }
-        boolean skipped = isSkipped(path);
         if (skipped) {
             row.getStyleClass().add("skipped");
         }
         row.setOnMouseClicked(e -> select(path));
 
+        List<Label> details = new ArrayList<>();
         String flagged = pendingFlag(path, item.rename());
         if (flagged != null) {
-            row.getChildren().add(label("⚠ " + ReviewText.riskShort(result.actionFor(flagged).orElse(null),
-                    result.factsFor(flagged)), "risk-tag"));
+            // Under the row rather than beside the name, where it hid the name in a narrow list.
+            details.add(label("⚠ " + riskShortFor(flagged), "risk-tag"));
         }
-        if (conflict) {
-            Node picker = resolutionPicker(path);
-            // Skipping wins over any choice here, so the choice must not look live.
-            picker.setDisable(skipped);
-            row.getChildren().add(picker);
+        if (showsOdd(path)) {
+            details.add(label(ReviewText.oddLine(result.marks().get(path)), "odd-line"));
+        }
+        details.addAll(rowDetails(path, item.rename()));
+        if (!details.isEmpty()) {
+            // Wrapped, not cut: the row keeps the list's width and a note is read to decide.
+            details.forEach(detail -> detail.setWrapText(true));
+            VBox detailBox = new VBox(2);
+            detailBox.getChildren().addAll(details);
+            detailBox.getStyleClass().add("row-details");
+            detailBox.setPadding(new Insets(2, 0, 2, item.indent() + DETAILS_INSET));
+            row.getChildren().add(detailBox);
+        }
+        return row;
+    }
+
+    /**
+     * A folder of the tree: a click opens or closes it and selects nothing. Its tick and its
+     * counts cover every file under it that the filter shows, open or closed.
+     */
+    private Node folderRow(FolderRow item) {
+        ChangeTree.Folder folder = item.folder();
+        String path = folder.path();
+        List<String> paths = folder.paths();
+        Set<String> closed = item.conflicts() ? closedConflicts : closedChanges;
+
+        HBox line = new HBox(10, indent(folder.depth() * INDENT_STEP));
+        if (!item.conflicts()) {
+            ChangeTree.Ticks ticks = ChangeTree.ticks(paths, picked);
+            Label box = checkBox(switch (ticks) {
+                case ALL -> "✓";
+                case SOME -> "–";
+                case NONE -> "";
+            });
+            box.setOnMouseClicked(e -> {
+                e.consume();
+                if (ticks == ChangeTree.Ticks.ALL) {
+                    paths.forEach(picked::remove);
+                } else {
+                    picked.addAll(paths);
+                }
+                refresh();
+            });
+            line.getChildren().add(box);
+        }
+        Region icon = new Region();
+        icon.getStyleClass().add("folder-icon");
+        HBox glyphs = new HBox(2, label(folder.open() ? "▾" : "▸", "caret"), icon);
+        glyphs.setAlignment(Pos.CENTER);
+        glyphs.getStyleClass().add("folder-glyphs");
+
+        Label name = label(folder.name(), "folder-name");
+        name.setMinWidth(0);
+        name.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(name, Priority.ALWAYS);
+        line.getChildren().addAll(glyphs, name);
+        if (!folder.open()) {
+            // Closed, the folder is the only place that can say a file inside still waits.
+            long waiting = folder.count(e -> pendingFlag(e.action().relativePath(), e.rename()) != null);
+            if (waiting > 0) {
+                line.getChildren().add(fixed(label("⚠ " + waiting, "risk-tag")));
+            }
+        }
+        List<SyncAction> actions = folder.files().stream().map(ChangeList.Entry::action).toList();
+        String meta = item.conflicts()
+                ? ReviewText.conflictFolderMeta(actions.size(),
+                        folder.count(e -> decision(e.action().relativePath()) == Resolution.SKIP))
+                : ReviewText.folderMeta(actions, this::isSkipped);
+        line.getChildren().add(fixed(label(meta, "folder-meta")));
+        line.setAlignment(Pos.CENTER_LEFT);
+        line.getStyleClass().addAll("row", "folder-row");
+        Tooltip.install(line, new Tooltip(Texts.t("review.tree.toggle")));
+        if (item.last()) {
+            line.getStyleClass().add("last");
+        }
+        if (folder.count(e -> !isSkipped(e.action().relativePath())) == 0) {
+            line.getStyleClass().add("skipped");
+        }
+        line.setOnMouseClicked(e -> {
+            if (!closed.remove(path)) {
+                closed.add(path);
+            }
+            rebuildRows();
+        });
+        return line;
+    }
+
+    /**
+     * A group of changes: its folder and when it happened, what it is made of, and -- for a
+     * suspicious one -- what the gate says about it. A click opens or closes it; its tick and
+     * counts cover the group's rows the filter shows, open or closed.
+     */
+    private Node groupRow(GroupRow item) {
+        String id = item.id();
+        ChangeClusters.Cluster cluster = item.cluster();
+        List<String> paths = paths(item.entries());
+        List<SyncAction> actions = item.entries().stream().map(ChangeList.Entry::action).toList();
+        boolean open = openGroups.contains(id);
+
+        ChangeTree.Ticks ticks = ChangeTree.ticks(paths, picked);
+        Label box = checkBox(switch (ticks) {
+            case ALL -> "✓";
+            case SOME -> "–";
+            case NONE -> "";
+        });
+        box.setOnMouseClicked(e -> {
+            e.consume();
+            if (ticks == ChangeTree.Ticks.ALL) {
+                paths.forEach(picked::remove);
+            } else {
+                picked.addAll(paths);
+            }
+            refresh();
+        });
+        Region icon = new Region();
+        icon.getStyleClass().add("stack-icon");
+        HBox glyphs = new HBox(2, label(open ? "▾" : "▸", "caret"), icon);
+        glyphs.setAlignment(Pos.CENTER);
+        glyphs.getStyleClass().add("folder-glyphs");
+
+        Label name = label(cluster == null ? Texts.t("review.group.other") : ReviewText.groupName(cluster.prefix()),
+                "folder-name");
+        name.setMinWidth(0);
+        Label when = label(cluster == null ? Texts.t("review.group.otherHint")
+                : ReviewText.groupWhen(cluster.first(), cluster.last(), ZoneId.systemDefault()), "faint", "small");
+        when.setMinWidth(0);
+        HBox head = new HBox(8, name, when);
+        head.setAlignment(Pos.BASELINE_LEFT);
+        head.setMinWidth(0);
+        Label makeup = label(cluster == null ? SizeFormat.format(ReviewText.totalSize(actions, result::factsFor))
+                : ReviewText.groupMakeup(actions, result::factsFor), "folder-meta");
+        makeup.setMinWidth(0);
+        VBox text = new VBox(2, head, makeup);
+        text.setMinWidth(0);
+        HBox.setHgrow(text, Priority.ALWAYS);
+        boolean waiting = false;
+        if (cluster != null && cluster.suspicious()) {
+            RiskGate.Item gateItem = gate.item(id).orElseThrow();
+            waiting = !gate.isAcknowledged(id) && !gate.isGroupSkipped(id);
+            Label warning = label("⚠ " + gateItem.title(), "small", waiting ? "risk-tag" : "muted");
+            warning.setMinWidth(0);
+            text.getChildren().add(warning);
         } else {
-            row.getChildren().addAll(
-                    label(ReviewText.sizes(action, result.factsFor(path)), "sizes"),
-                    skipped ? label(ReviewText.skippedDirection(), "dir-text", "dir-skip")
-                            : label(ReviewText.direction(action), "dir-text",
-                                    "dir-" + tone(ChangeList.Filter.of(action))));
+            long odd = paths.stream().filter(this::showsOdd).count();
+            if (odd > 0) {
+                text.getChildren().add(label(Texts.t("review.odd.tag", odd), "odd-line"));
+            }
         }
+
+        long skippedCount = paths.stream().filter(this::isSkipped).count();
+        HBox row = new HBox(10, box, glyphs, text,
+                fixed(label(ReviewText.groupCount(paths.size(), skippedCount), "folder-meta")));
+        row.setAlignment(Pos.CENTER_LEFT);
+        row.getStyleClass().addAll("row", "group-row");
+        Tooltip.install(row, new Tooltip(Texts.t("review.group.toggle")));
+        if (item.last()) {
+            row.getStyleClass().add("last");
+        }
+        if (waiting) {
+            row.getStyleClass().add("suspicious");
+        }
+        if (skippedCount == paths.size()) {
+            row.getStyleClass().add("skipped");
+        }
+        row.setOnMouseClicked(e -> {
+            if (!openGroups.remove(id)) {
+                openGroups.add(id);
+            }
+            rebuildRows();
+        });
         return row;
     }
 
@@ -862,8 +1448,6 @@ public class ReviewView {
                 lines.add(label(note, "muted", "small"));
             }
         }
-        // Wrapped, not cut: the row keeps the list's width and a note is read to decide.
-        lines.forEach(line -> line.setWrapText(true));
         return lines;
     }
 

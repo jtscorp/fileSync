@@ -22,8 +22,12 @@ public class RiskScanner {
     /** How many unreadable paths the flag names; the rest are only counted. */
     private static final int UNREADABLE_SHOWN = 5;
 
-    /** @param laptopFiles files in the laptop copy after the ignore rules; {@code laptopBytes} their total size */
-    public record Scan(List<RiskFlag> flags, long laptopFiles, long laptopBytes) {}
+    /**
+     * @param laptopFiles files in the laptop copy after the ignore rules; {@code laptopBytes} their total size
+     * @param laptopTree  what the laptop copy looks like, for the anomaly model; {@code hddTree} the same for the HDD
+     */
+    public record Scan(List<RiskFlag> flags, long laptopFiles, long laptopBytes, TreeProfile laptopTree,
+                       TreeProfile hddTree) {}
 
     public List<RiskFlag> scan(Path laptopRoot, Path hddRoot, List<String> ignorePatterns) throws IOException {
         return scanWithTotals(laptopRoot, hddRoot, ignorePatterns).flags();
@@ -33,8 +37,10 @@ public class RiskScanner {
         IgnoreRules rules = IgnoreRules.parse(ignorePatterns);
 
         List<Path> unreadable = new ArrayList<>();
-        Map<String, Long> laptopSizes = collectSizes(laptopRoot, rules, unreadable);
-        Map<String, Long> hddSizes = collectSizes(hddRoot, rules, unreadable);
+        TreeProfile laptopTree = new TreeProfile();
+        TreeProfile hddTree = new TreeProfile();
+        Map<String, Long> laptopSizes = collectSizes(laptopRoot, rules, unreadable, laptopTree);
+        Map<String, Long> hddSizes = collectSizes(hddRoot, rules, unreadable, hddTree);
 
         Set<String> allPaths = new HashSet<>();
         allPaths.addAll(laptopSizes.keySet());
@@ -76,10 +82,12 @@ public class RiskScanner {
         }
 
         return new Scan(flags, laptopSizes.size(),
-                laptopSizes.values().stream().mapToLong(Long::longValue).sum());
+                laptopSizes.values().stream().mapToLong(Long::longValue).sum(), laptopTree, hddTree);
     }
 
-    private Map<String, Long> collectSizes(Path root, IgnoreRules rules, List<Path> unreadable) throws IOException {
+    /** @param tree filled along the way: the walk is the one chance to see every file */
+    private Map<String, Long> collectSizes(Path root, IgnoreRules rules, List<Path> unreadable, TreeProfile tree)
+            throws IOException {
         Map<String, Long> sizes = new HashMap<>();
         if (!Files.isDirectory(root)) {
             return sizes;
@@ -102,6 +110,7 @@ public class RiskScanner {
                 String relativePath = root.relativize(file).toString().replace('\\', '/');
                 if (!rules.matches(relativePath)) {
                     sizes.put(relativePath, attrs.size());
+                    tree.add(relativePath, attrs.size(), attrs.lastModifiedTime().toInstant());
                 }
                 return FileVisitResult.CONTINUE;
             }

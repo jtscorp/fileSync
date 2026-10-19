@@ -16,7 +16,10 @@
 -->
 <BorderPane xmlns:fx="http://javafx.com/fxml">
     <left>
-        <VBox styleClass="sidebar" minWidth="236" prefWidth="236" maxWidth="236">
+      <!-- The sidebar's width is the default; MainView sets the dragged one. The grip has its
+           own few pixels beside the sidebar, so it never covers the profile list's scrollbar. -->
+      <HBox>
+        <VBox fx:id="sidebar" styleClass="sidebar" minWidth="236" prefWidth="236" maxWidth="236">
             <HBox alignment="CENTER_LEFT" spacing="10" styleClass="sidebar-head">
                 <Label text="⇅" styleClass="logo"/>
                 <Label text="FileSync" styleClass="app-title"/>
@@ -36,6 +39,8 @@
                 <Label fx:id="unisonVersionLabel" styleClass="mono-faint, tools-link"/>
             </VBox>
         </VBox>
+        <Region fx:id="sidebarGrip" styleClass="pane-grip, side-grip"/>
+      </HBox>
     </left>
     <center>
       <StackPane>

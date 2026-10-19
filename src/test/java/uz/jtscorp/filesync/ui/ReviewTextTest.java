@@ -1,6 +1,9 @@
 package uz.jtscorp.filesync.ui;
 
 import org.junit.jupiter.api.Test;
+import uz.jtscorp.filesync.Texts;
+import uz.jtscorp.filesync.sync.ContentSignals.Finding;
+import uz.jtscorp.filesync.sync.ContentSignals.Signal;
 import uz.jtscorp.filesync.sync.FileDiff.FileFacts;
 import uz.jtscorp.filesync.sync.SyncAction;
 import uz.jtscorp.filesync.sync.SyncAction.ActionType;
@@ -9,6 +12,8 @@ import uz.jtscorp.filesync.ui.CheckResult.FilePair;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -172,5 +177,138 @@ class ReviewTextTest {
         assertEquals("Qayta nomlandi: a.txt → b.txt",
                 ReviewText.rename(new uz.jtscorp.filesync.sync.PlanInterpreter.Rename("a.txt", "b.txt",
                         Direction.LAPTOP_TO_HDD)));
+    }
+
+    @Test
+    void aChangeFolderCountsItsFilesByKindThenTheSkippedOnes() {
+        List<SyncAction> files = List.of(
+                new SyncAction("a/1", Direction.LAPTOP_TO_HDD, ActionType.NEW),
+                new SyncAction("a/2", Direction.LAPTOP_TO_HDD, ActionType.CHANGED),
+                new SyncAction("a/3", Direction.HDD_TO_LAPTOP, ActionType.CHANGED),
+                new SyncAction("a/4", Direction.LAPTOP_TO_HDD, ActionType.DELETED),
+                new SyncAction("a/5", Direction.HDD_TO_LAPTOP, ActionType.CHANGED, SyncAction.Origin.MODE));
+
+        assertEquals("5 fayl · 2 → Zaxira · 1 ← Asosiy · 1 o'chadi · 1 ustidan yoziladi · 2 tasi o'tkaziladi",
+                ReviewText.folderMeta(files, Set.of("a/1", "a/4")::contains));
+        // A kind with no file and a skip count of nought are left out.
+        assertEquals("1 fayl · 1 → Zaxira", ReviewText.folderMeta(files.subList(0, 1), path -> false));
+    }
+
+    @Test
+    void aConflictFolderSaysHowManyAreStillUndecided() {
+        assertEquals("3 fayl · 2 tasi tanlanmagan", ReviewText.conflictFolderMeta(3, 2));
+        assertEquals("3 fayl", ReviewText.conflictFolderMeta(3, 0));
+    }
+
+    @Test
+    void aGroupsTimeIsOneMomentOrARangeOnItsFirstDay() {
+        Instant start = Instant.parse("2026-10-06T11:34:20Z");
+
+        assertEquals("06.10, 11:34 da", ReviewText.groupWhen(start, start.plusSeconds(30), ZoneOffset.UTC));
+        assertEquals("06.10, 11:34–11:40", ReviewText.groupWhen(start, start.plusSeconds(6 * 60), ZoneOffset.UTC));
+        assertEquals("/", ReviewText.groupName(""));
+        assertEquals("2026/sentabr", ReviewText.groupName("2026/sentabr"));
+    }
+
+    @Test
+    void aGroupsMakeupNamesItsThreeLargestKindsThenTheTotalSize() {
+        List<SyncAction> rows = new java.util.ArrayList<>();
+        java.util.Map<String, FilePair> facts = new java.util.HashMap<>();
+        for (int i = 0; i < 3; i++) {
+            rows.add(new SyncAction(i + ".jpg", Direction.LAPTOP_TO_HDD, ActionType.DELETED));
+            facts.put(i + ".jpg", new FilePair(MISSING, file(1024)));
+            rows.add(new SyncAction(i + ".jpg.locked", Direction.LAPTOP_TO_HDD, ActionType.NEW));
+            facts.put(i + ".jpg.locked", new FilePair(file(1024), MISSING));
+        }
+        rows.add(new SyncAction("izoh.txt", Direction.LAPTOP_TO_HDD, ActionType.NEW));
+        rows.add(new SyncAction("README", Direction.LAPTOP_TO_HDD, ActionType.NEW));
+        facts.put("izoh.txt", new FilePair(file(512), MISSING));
+        facts.put("README", new FilePair(file(512), MISSING));
+
+        assertEquals("3 .jpg o'chadi · 3 .locked → Zaxira · 1 .txt → Zaxira · 7,0 KB",
+                ReviewText.groupMakeup(rows, facts::get));
+    }
+
+    @Test
+    void aGroupsCountSaysHowManySitThisApplyOut() {
+        assertEquals("18 fayl", ReviewText.groupCount(18, 0));
+        assertEquals("18 fayl · 4 tasi o'tkaziladi", ReviewText.groupCount(18, 4));
+    }
+
+    private static Finding finding(Signal signal, boolean laptopBad) {
+        return new Finding(signal, laptopBad, "pdf", 7.9912, 4.6061, 1.0, 0.004,
+                new byte[] {(byte) 0xd4, 0x1f, (byte) 0x8a, 0x3c, 0, 1, 2, 3}, "%PDF-1.7".getBytes(),
+                2_516_582);
+    }
+
+    @Test
+    void eachSignalNamesTheBadCopyAndTheOneItWouldReplace() {
+        assertEquals("Asosiy nusxaning mazmuni tasodifiy baytlarga o'xshaydi: entropiya 4,61 → 7,99 bit/bayt. "
+                + "Fayl shifrlangan bo'lishi mumkin. Qo'llansa, Zaxira nusxa ham shu bilan almashtiriladi.",
+                ReviewText.signalReason(finding(Signal.ENTROPY, true)));
+        assertEquals("Kengaytmasi .pdf, lekin Zaxira nusxaning boshida PDF belgisi yo'q (d4 1f 8a 3c). "
+                + "Fayl buzilgan bo'lishi mumkin. Qo'llansa, Asosiy nusxa shu bilan almashtiriladi.",
+                ReviewText.signalReason(finding(Signal.MAGIC, false)));
+        assertEquals("Zaxira nusxa 2,4 MB, lekin butunlay nol baytlardan iborat. Hajmi o'zgarmagani uchun hajm "
+                + "tekshiruvi buni ko'rmaydi — diskdagi sektorlar o'chgan bo'lishi mumkin. Qo'llansa, Asosiy "
+                + "nusxa ham shu bilan almashtiriladi.", ReviewText.signalReason(finding(Signal.ZEROS, false)));
+    }
+
+    @Test
+    void aSignalsShortLabelFitsBesideAPath() {
+        assertEquals("entropiya 4,61 → 7,99", ReviewText.signalShort(finding(Signal.ENTROPY, true)));
+        assertEquals(".pdf, lekin PDF emas", ReviewText.signalShort(finding(Signal.MAGIC, true)));
+        assertEquals("hammasi nol bayt", ReviewText.signalShort(finding(Signal.ZEROS, true)));
+    }
+
+    @Test
+    void englishWritesADecimalPoint() {
+        Texts.use(Texts.Language.EN);
+        try {
+            assertEquals("entropy 4.61 → 7.99", ReviewText.signalShort(finding(Signal.ENTROPY, true)));
+            assertEquals("1 content signal · 2 groups", ReviewText.analysisDone(1, 2));
+        } finally {
+            Texts.use(Texts.Language.UZ);
+        }
+    }
+
+    @Test
+    void theAnalysisRowPutsEachValueUnderItsSide() {
+        ReviewText.AnalysisRow entropy = ReviewText.analysis(finding(Signal.ENTROPY, true));
+        assertEquals(new ReviewText.AnalysisRow("Entropiya, bit/bayt", "7,99", "4,61"), entropy);
+        // The backup copy is the bad one: its header is shown in hex, the good one as text.
+        assertEquals(new ReviewText.AnalysisRow("Fayl boshi", "%PDF-1.7", "d4 1f 8a 3c"),
+                ReviewText.analysis(finding(Signal.MAGIC, false)));
+        assertEquals(new ReviewText.AnalysisRow("Nol baytlar", "0%", "100%"),
+                ReviewText.analysis(finding(Signal.ZEROS, false)));
+    }
+
+    @Test
+    void theFourthStageCountsSignalsAndGroups() {
+        assertEquals("3 ta kontent belgisi · 0 ta guruh", ReviewText.analysisDone(3, 0));
+    }
+
+    @Test
+    void theModelsMarkSaysItsScoreAndEveryReason() {
+        Oddity.Mark mark = new Oddity.Mark(0.6849, List.of(new Oddity.Reason(Oddity.Why.NIGHT, "03:41"),
+                new Oddity.Reason(Oddity.Why.STALE, "6")));
+
+        assertEquals("◆ G'ayrioddiy 0,68 · kechasi 03:41 da o'zgargan, 6 yil tegilmagan edi", ReviewText.oddLine(mark));
+        assertEquals("bu papkada .locked kengaytmasi uchramagan · eski nusxasi o'chgan", ReviewText.reasons(
+                new Oddity.Mark(0.9, List.of(new Oddity.Reason(Oddity.Why.RARE_EXT, ".locked"),
+                        new Oddity.Reason(Oddity.Why.PAIR, ""))), " · "));
+        assertEquals("G'ayrioddiylik modeli 10 ta tekshiruvdan keyin yoqiladi (hozir 4 ta)", ReviewText.modelCold(4));
+        assertEquals("3 ta kontent belgisi · 2 ta guruh · 4 ta g'ayrioddiy", ReviewText.analysisDone(3, 2, 4));
+    }
+
+    @Test
+    void englishCountsTheYearsUntouched() {
+        Texts.use(Texts.Language.EN);
+        try {
+            assertEquals("untouched for 1 year", ReviewText.reason(new Oddity.Reason(Oddity.Why.STALE, "1")));
+            assertEquals("untouched for 6 years", ReviewText.reason(new Oddity.Reason(Oddity.Why.STALE, "6")));
+        } finally {
+            Texts.use(Texts.Language.UZ);
+        }
     }
 }
