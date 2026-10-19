@@ -60,8 +60,25 @@ public class UnisonRunner {
      * of the plan), and {@code q} quits before anything is propagated.
      */
     public Result dryRun(String profileName) throws IOException, InterruptedException {
-        Result raw = run(List.of("unison", profileName, "-auto", "-ui", "text"), "\n0\nL\nq\n");
+        return dryRun(profileName, null);
+    }
+
+    /**
+     * @param forceRoot when not null, the plan is made as if {@code -force <forceRoot>} were
+     *                  given, so a mirror mode previews what it would really do
+     */
+    public Result dryRun(String profileName, String forceRoot) throws IOException, InterruptedException {
+        Result raw = run(dryRunCommand(profileName, forceRoot), "\n0\nL\nq\n");
         return new Result(dryRunExitCode(raw), raw.output());
+    }
+
+    static List<String> dryRunCommand(String profileName, String forceRoot) {
+        List<String> command = new ArrayList<>(List.of("unison", profileName, "-auto", "-ui", "text"));
+        if (forceRoot != null) {
+            command.add("-force");
+            command.add(forceRoot);
+        }
+        return command;
     }
 
     /**
@@ -87,11 +104,29 @@ public class UnisonRunner {
      *                  {@code -ignore "Path ..."}; nothing is written to the profile
      */
     public Result apply(String profileName, List<String> skipPaths) throws IOException, InterruptedException {
-        return run(batchCommand(profileName, skipPaths), null);
+        return apply(profileName, null, skipPaths);
+    }
+
+    /**
+     * @param forceRoot when not null, the whole run is {@code -force <forceRoot>} (mirror
+     *                  modes); an {@code -ignore} still wins over it, so a skipped file stays
+     *                  untouched
+     */
+    public Result apply(String profileName, String forceRoot, List<String> skipPaths)
+            throws IOException, InterruptedException {
+        return run(batchCommand(profileName, forceRoot, skipPaths), null);
     }
 
     static List<String> batchCommand(String profileName, List<String> skipPaths) {
+        return batchCommand(profileName, null, skipPaths);
+    }
+
+    static List<String> batchCommand(String profileName, String forceRoot, List<String> skipPaths) {
         List<String> command = new ArrayList<>(List.of("unison", profileName, "-batch"));
+        if (forceRoot != null) {
+            command.add("-force");
+            command.add(forceRoot);
+        }
         addSkips(command, skipPaths);
         return command;
     }
@@ -132,6 +167,24 @@ public class UnisonRunner {
     static List<String> preferCommand(String profileName, String preferRoot, List<String> paths,
                                       List<String> skipPaths) {
         return scopedCommand(profileName, "-prefer", preferRoot, paths, skipPaths);
+    }
+
+    /**
+     * Makes {@code forceRoot} win for exactly the given paths, whichever side changed; used to
+     * delete backup-only files that the main side no longer has.
+     *
+     * <p>Uses {@code -force}, not {@code -prefer}: these rows are meant to overwrite or delete
+     * regardless of which replica changed, and {@code -prefer} would only settle conflicts.
+     * That is safe only because {@code -path} narrows the run to the listed files.
+     */
+    public Result applyForcing(String profileName, String forceRoot, List<String> paths,
+                               List<String> skipPaths) throws IOException, InterruptedException {
+        return run(forceCommand(profileName, forceRoot, paths, skipPaths), null);
+    }
+
+    static List<String> forceCommand(String profileName, String forceRoot, List<String> paths,
+                                     List<String> skipPaths) {
+        return scopedCommand(profileName, "-force", forceRoot, paths, skipPaths);
     }
 
     /**

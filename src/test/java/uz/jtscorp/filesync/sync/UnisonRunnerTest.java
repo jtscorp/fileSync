@@ -137,4 +137,33 @@ class UnisonRunnerTest {
             assertEquals(0, UnisonRunner.dryRunExitCode(new UnisonRunner.Result(3, forced)));
         }
     }
+
+    @Test
+    void dryRunAddsForceOnlyWhenAsked() {
+        assertEquals(List.of("unison", "p", "-auto", "-ui", "text"),
+                UnisonRunner.dryRunCommand("p", null));
+        assertEquals(List.of("unison", "p", "-auto", "-ui", "text", "-force", "/a"),
+                UnisonRunner.dryRunCommand("p", "/a"));
+    }
+
+    @Test
+    void batchCommandWithForceAndIgnores() {
+        assertEquals(List.of("unison", "p", "-batch", "-force", "/a", "-ignore", "Path x\\[1\\]"),
+                UnisonRunner.batchCommand("p", "/a", List.of("x[1]")));
+        assertEquals(List.of("unison", "p", "-batch"),
+                UnisonRunner.batchCommand("p", null, List.of()));
+    }
+
+    @Test
+    void forceCommandScopesEveryPath() {
+        assertEquals(List.of("unison", "p", "-batch", "-force", "/a", "-path", "old", "-path", "b c",
+                        "-ignore", "Path s"),
+                UnisonRunner.forceCommand("p", "/a", List.of("old", "b c"), List.of("s")));
+    }
+
+    @Test
+    void forceCommandRefusesEmptyPaths() {
+        assertThrows(IllegalArgumentException.class,
+                () -> UnisonRunner.forceCommand("p", "/a", List.of(), List.of()));
+    }
 }
