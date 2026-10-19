@@ -80,4 +80,69 @@ class ApplyPlanTest {
                 ApplyPlan.skipped(List.of("risky.xlsx"), Set.of("e.jpg", "a.md", "elsewhere.txt"), ACTIONS));
         assertEquals(List.of("e.jpg"), ApplyPlan.skipped(List.of("e.jpg"), Set.of("e.jpg"), ACTIONS));
     }
+
+    private static SyncAction prune(String path, SyncAction.Origin origin) {
+        return new SyncAction(path, SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.ActionType.DELETED, origin);
+    }
+
+    @Test
+    void prunePathsComeFromModeAndManifestRowsOnly() {
+        List<SyncAction> actions = List.of(
+                prune("m.txt", SyncAction.Origin.MODE), prune("u.txt", SyncAction.Origin.UNISON),
+                prune("f.txt", SyncAction.Origin.MANIFEST),
+                new SyncAction("n.txt", SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.ActionType.DELETED,
+                        SyncAction.Origin.MANIFEST));
+
+        ApplyPlan plan = ApplyPlan.from(Map.of(), actions, Set.of(), true, List.of(),
+                uz.jtscorp.filesync.config.SyncMode.TWO_WAY_PRUNE);
+
+        assertEquals(List.of("m.txt", "f.txt"), plan.pruneFromHdd());
+        assertEquals(List.of("m.txt", "f.txt"), plan.batchIgnores());
+    }
+
+    @Test
+    void skippedPruneStaysIgnoredInBatchAndOutOfPrune() {
+        ApplyPlan plan = ApplyPlan.from(Map.of(), List.of(prune("old", SyncAction.Origin.MANIFEST)), Set.of(), true,
+                List.of("old"), uz.jtscorp.filesync.config.SyncMode.TWO_WAY_PRUNE);
+
+        assertTrue(plan.pruneFromHdd().isEmpty());
+        assertEquals(List.of("old"), plan.batchIgnores());
+    }
+
+    @Test
+    void unskippedPruneIsIgnoredInBatchToo() {
+        // Otherwise the plain -batch run copies the backup-only file onto the main side.
+        ApplyPlan plan = ApplyPlan.from(Map.of(), List.of(prune("old", SyncAction.Origin.MANIFEST)), Set.of(), true,
+                List.of(), uz.jtscorp.filesync.config.SyncMode.TWO_WAY_PRUNE);
+
+        assertEquals(List.of("old"), plan.pruneFromHdd());
+        assertTrue(plan.batchIgnores().contains("old"));
+    }
+
+    @Test
+    void forcedModeHasNoPruneAndNoConflictRuns() {
+        List<SyncAction> actions = List.of(conflict("a.md"), prune("old", SyncAction.Origin.MODE));
+        for (var mode : List.of(uz.jtscorp.filesync.config.SyncMode.MIRROR_TO_BACKUP,
+                uz.jtscorp.filesync.config.SyncMode.RESTORE_FROM_BACKUP)) {
+            ApplyPlan plan = ApplyPlan.from(Map.of("a.md", Resolution.LAPTOP), actions, Set.of(), true, List.of(), mode);
+
+            assertTrue(plan.pruneFromHdd().isEmpty());
+            assertTrue(plan.laptopWins().isEmpty());
+            assertTrue(plan.hddWins().isEmpty());
+            assertTrue(plan.merges().isEmpty());
+        }
+    }
+
+    @Test
+    void skippingARenameSkipsBothPaths() {
+        List<SyncAction> actions = List.of(
+                new SyncAction("old.txt", SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.ActionType.DELETED),
+                new SyncAction("new.txt", SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.ActionType.NEW));
+        var rename = new uz.jtscorp.filesync.sync.PlanInterpreter.Rename("old.txt", "new.txt",
+                SyncAction.Direction.LAPTOP_TO_HDD);
+
+        assertEquals(List.of("old.txt", "new.txt"),
+                ApplyPlan.skipped(List.of(), Set.of("new.txt"), actions, List.of(rename)));
+        assertTrue(ApplyPlan.skipped(List.of(), Set.of(), actions, List.of(rename)).isEmpty());
+    }
 }
