@@ -6,9 +6,11 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 class FolderWalkTest {
 
@@ -53,6 +55,24 @@ class FolderWalkTest {
 
         assertEquals(List.of(new FolderWalk.Item("a.txt", 1, false)),
                 FolderWalk.contents(root, "", List.of()));
+    }
+
+    @Test
+    void skipsAnUnreadableSubfolderAndListsTheRest(@TempDir Path root) throws IOException {
+        assumeFalse("root".equals(System.getProperty("user.name")));
+        write(root, "old/a.txt", 1);
+        write(root, "old/locked/hidden.txt", 9);
+        write(root, "old/z.txt", 2);
+        Path locked = root.resolve("old/locked");
+        Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("---------"));
+        try {
+            assertEquals(List.of(
+                    new FolderWalk.Item("old/a.txt", 1, false),
+                    new FolderWalk.Item("old/z.txt", 2, false)),
+                    FolderWalk.contents(root, "old", List.of()));
+        } finally {
+            Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
     }
 
     @Test

@@ -123,6 +123,9 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
     public static Manifest capture(Path laptopRoot, Path hddRoot, List<String> ignores, String profile,
                                    String host, Instant now, Optional<Manifest> previous,
                                    Set<String> carryOver) throws IOException {
+        // Another machine's or another folder's record is not our last synced state: carried
+        // into ours, the next Check would read its entries as "deleted on the main side".
+        Optional<Manifest> own = previous.filter(p -> p.belongsTo(laptopRoot.toString(), host));
         IgnoreRules rules = IgnoreRules.parse(ignores);
         // Unreadable places are simply not recorded; RiskScanner reports them.
         Map<String, Entry> laptop = walk(laptopRoot, "", rules).entries();
@@ -138,7 +141,7 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
             // The walk cannot vouch for a skipped path (same size is not same content), so
             // it is dropped even when there is no previous record to put back.
             entries.keySet().removeIf(p -> underOrEqual(p, carried));
-            previous.ifPresent(prev -> prev.entries().forEach((p, e) -> {
+            own.ifPresent(prev -> prev.entries().forEach((p, e) -> {
                 if (underOrEqual(p, carried)) {
                     entries.put(p, e);
                 }

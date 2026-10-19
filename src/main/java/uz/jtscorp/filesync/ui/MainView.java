@@ -209,16 +209,15 @@ public class MainView {
     }
 
     /**
-     * What each folder that is about to be deleted or force-overwritten holds, read on the
-     * side that gets written. Ignored files are listed too: Unison deletes them with the folder.
+     * What each folder that is about to be deleted holds, read on the side that loses it.
+     * Ignored files are listed too: Unison deletes them with the folder. A changed folder
+     * gets no listing: that row is its properties, and Unison lists changed files one by one.
      */
     private static Map<String, CheckResult.FolderContents> folderContents(SyncProfile profile,
                                                                          List<SyncAction> actions) throws IOException {
         Map<String, CheckResult.FolderContents> folders = new HashMap<>();
         for (SyncAction action : actions) {
-            boolean overwrites = action.actionType() == SyncAction.ActionType.CHANGED
-                    && action.origin() == SyncAction.Origin.MODE;
-            if (action.actionType() != SyncAction.ActionType.DELETED && !overwrites) {
+            if (action.actionType() != SyncAction.ActionType.DELETED) {
                 continue;
             }
             Path written = action.direction() == SyncAction.Direction.LAPTOP_TO_HDD
@@ -242,8 +241,9 @@ public class MainView {
 
     /**
      * Files the sync mode or the manifest makes Apply delete ({@code DELETED}) or overwrite
-     * ({@code CHANGED}); Unison's own rows are not counted. A folder counts its files, and at
-     * least one: a folder whose contents could not be listed must still reach the gate.
+     * ({@code CHANGED}); Unison's own rows are not counted. A deleted folder counts its files,
+     * and at least one: a folder whose contents could not be listed must still reach the gate.
+     * Any other row, a changed folder included, counts one.
      */
     private static int irreversible(CheckResult result, SyncAction.ActionType type) {
         int count = 0;
@@ -278,19 +278,17 @@ public class MainView {
     }
 
     /**
-     * What the manifest must not take from the walk: skipped files, and every conflict that no
-     * run settled (left alone, or merged without success). Their two copies may differ.
+     * What the manifest must not take from the walk: skipped files, and every conflict whose two
+     * copies still differ. Settled is read off the disk, not off the plan: a -prefer or merge run
+     * can exit 1 or skip the item, and a same-size differing pair would then be recorded as synced.
+     * Reads both copies of each conflict, so it runs off the UI thread.
      */
-    private static Set<String> carryOver(ApplyPlan plan, List<SyncAction> actions, List<String> unmerged) {
+    private static Set<String> carryOver(SyncProfile profile, ApplyPlan plan, List<SyncAction> actions) {
         Set<String> carried = new HashSet<>(plan.skipped());
-        for (SyncAction action : actions) {
-            String path = action.relativePath();
-            boolean settled = plan.laptopWins().contains(path) || plan.hddWins().contains(path)
-                    || (plan.merges().contains(path) && !unmerged.contains(path));
-            if (action.actionType() == SyncAction.ActionType.CONFLICT && !settled) {
-                carried.add(path);
-            }
-        }
+        List<String> conflicts = actions.stream()
+                .filter(a -> a.actionType() == SyncAction.ActionType.CONFLICT)
+                .map(SyncAction::relativePath).toList();
+        carried.addAll(stillDifferent(profile, conflicts));
         return carried;
     }
 
@@ -1019,7 +1017,7 @@ public class MainView {
                 }
                 // Only reached when every phase ran: a failed one threw above, and a plan that
                 // stopped midway must not be recorded as the last synced state.
-                String manifestError = writeManifest(profile, carryOver(plan, actions, unmerged));
+                String manifestError = writeManifest(profile, carryOver(profile, plan, actions));
                 updateStats(profile.name(), stats -> stats.withLastSync(Instant.now()));
                 return new ApplyResult(output.toString(), warning, batch.exitCode(), unmerged, manifestError);
             }

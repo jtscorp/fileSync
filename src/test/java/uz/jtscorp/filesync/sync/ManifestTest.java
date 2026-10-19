@@ -27,6 +27,11 @@ class ManifestTest {
         return new Manifest("work", "/home/u/docs", "laptop", NOW, entries);
     }
 
+    /** A previous manifest that belongs to {@code lap} on host "h", the one the capture tests use. */
+    private static Manifest previousOf(Path lap, Map<String, Manifest.Entry> entries) {
+        return new Manifest("work", lap.toString(), "h", NOW, entries);
+    }
+
     private static Manifest.Entry entry(char type, long size) {
         return new Manifest.Entry(type, size, 1_760_000_000_000L);
     }
@@ -135,7 +140,7 @@ class ManifestTest {
         Path hdd = root.resolve("hdd");
         Files.createDirectories(lap);
         file(hdd.resolve("uz/ishonch/A.java"), "x");
-        Manifest previous = sample(Map.of("uz/ishonch", entry('d', 0),
+        Manifest previous = previousOf(lap, Map.of("uz/ishonch", entry('d', 0),
                 "uz/ishonch/A.java", entry('f', 1)));
 
         Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.of(previous),
@@ -150,11 +155,33 @@ class ManifestTest {
         Path hdd = root.resolve("hdd");
         file(lap.resolve("c/x.txt"), "abc");
         file(hdd.resolve("c/x.txt"), "abc");
-        Manifest previous = sample(Map.of("c/x.txt", entry('f', 99)));
+        Manifest previous = previousOf(lap, Map.of("c/x.txt", entry('f', 99)));
 
         Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.of(previous), Set.of("c"));
 
         assertEquals(Map.of("c/x.txt", entry('f', 99)), m.entries());
+    }
+
+    @Test
+    void foreignPreviousContributesNothing(@TempDir Path root) throws IOException {
+        // Another machine's or another folder's record must not become ours: the next Check
+        // would read its entries as "deleted on the main side".
+        Path lap = root.resolve("lap");
+        Path hdd = root.resolve("hdd");
+        Files.createDirectories(lap);
+        file(hdd.resolve("c/x.txt"), "abc");
+        file(lap.resolve("other.txt"), "abc");
+        file(hdd.resolve("other.txt"), "abc");
+        Map<String, Manifest.Entry> theirs = Map.of("c", entry('d', 0), "c/x.txt", entry('f', 3));
+
+        for (Manifest foreign : List.of(
+                new Manifest("work", lap.toString(), "another-host", NOW, theirs),
+                new Manifest("work", "/somewhere/else", "h", NOW, theirs))) {
+            Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.of(foreign),
+                    Set.of("c"));
+
+            assertEquals(Set.of("other.txt"), m.entries().keySet());
+        }
     }
 
     @Test
