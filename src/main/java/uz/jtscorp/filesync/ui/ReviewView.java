@@ -89,6 +89,11 @@ public class ReviewView {
     private boolean sortReversed;
     /** Conflicts ticked for their bulk bar; kept apart so neither bar acts on the other's rows. */
     private final Set<String> pickedConflicts = new HashSet<>();
+    /**
+     * Gate cards of a move's hidden {@code from} path that a rename row's skip settled, so
+     * undoing that skip reopens only these and never a decision made on the card itself.
+     */
+    private final Set<String> renameSkippedFroms = new HashSet<>();
     private ChangeList.ConflictFilter conflictFilter = ChangeList.ConflictFilter.ALL;
     private ChangeList.Sort conflictSort = ChangeList.Sort.PATH;
     private boolean conflictSortReversed;
@@ -149,6 +154,7 @@ public class ReviewView {
         this.gate = gate;
         picked.clear();
         pickedConflicts.clear();
+        renameSkippedFroms.clear();
         filter = ChangeList.Filter.ALL;
         conflictFilter = ChangeList.ConflictFilter.ALL;
         rebuildRows();
@@ -250,6 +256,7 @@ public class ReviewView {
         selectedPath = null;
         picked.clear();
         pickedConflicts.clear();
+        renameSkippedFroms.clear();
         reviewList.setItems(FXCollections.observableArrayList());
         diffPanel.clear();
         applyButton.setDisable(true);
@@ -293,10 +300,23 @@ public class ReviewView {
     private void setSkipped(String path, boolean value) {
         skipOne(path, value);
         for (PlanInterpreter.Rename rename : result.renames()) {
-            String from = rename.from();
-            if (rename.to().equals(path) && gate.isFileItem(from)) {
-                gate.setSkipped(from, value);
+            if (rename.to().equals(path)) {
+                cascadeToFrom(rename.from(), value);
             }
+        }
+    }
+
+    /**
+     * Only a card still waiting is settled, and only such a card is reopened: an acknowledged
+     * or already skipped {@code from} stays as the user left it. The Apply does not depend on
+     * this -- {@link ApplyPlan#skipped} leaves both halves of a skipped move out by itself.
+     */
+    private void cascadeToFrom(String from, boolean skip) {
+        if (skip && gate.isPendingFile(from)) {
+            gate.setSkipped(from, true);
+            renameSkippedFroms.add(from);
+        } else if (!skip && renameSkippedFroms.remove(from)) {
+            gate.setSkipped(from, false);
         }
     }
 
@@ -533,6 +553,8 @@ public class ReviewView {
     }
 
     private void afterDecision(RiskGate.Item item) {
+        // A click on the card is the user's own decision; a rename's undo must not reopen it.
+        renameSkippedFroms.remove(item.key());
         // Same file already shown: re-running diff would change nothing. A skip at the gate
         // can move a conflict between filters, so this goes the way a resolution does.
         afterResolution(item.isFile() ? item.path() : null);
