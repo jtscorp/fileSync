@@ -179,6 +179,73 @@ class SyncPlanParserTest {
                 only("changed  ---->            my file.txt  "));
     }
 
+    /** Real 2.53.3 capture with a state on both sides: 0 = plain, 1 = -force laptop, 2 = -force hdd. */
+    private static List<SyncAction> twoSidedPart(int part) throws IOException {
+        try (InputStream in = SyncPlanParserTest.class.getResourceAsStream("/sample-two-sided-dryrun-output.txt")) {
+            String all = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return new SyncPlanParser().parse(all.split("### force (?:laptop|hdd)\n")[part]);
+        }
+    }
+
+    @Test
+    void twoSidedConflictsKeepTheWholePath() throws IOException {
+        List<SyncAction> actions = twoSidedPart(0);
+        assertEquals(5, actions.size(), actions.toString());
+        for (String path : List.of("adel.txt", "bdel.txt", "d", "my d", "new2.txt")) {
+            assertAction(actions, path, SyncAction.ActionType.CONFLICT,
+                    SyncAction.Direction.CONFLICT, SyncAction.Origin.UNISON);
+        }
+    }
+
+    @Test
+    void mirrorReadsTheWinnerOnTheLeftAndTheLoserOnTheRight() throws IOException {
+        List<SyncAction> actions = twoSidedPart(1);
+        assertEquals(5, actions.size(), actions.toString());
+        // deleted ====> changed: Main's delete removes the backup's edit
+        assertAction(actions, "adel.txt", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+        // changed ====> deleted: Main's copy comes back on the backup
+        assertAction(actions, "bdel.txt", SyncAction.ActionType.NEW,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+        // deleted ====> chgd dir: the backup's folder goes
+        assertAction(actions, "d", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+        assertAction(actions, "my d", SyncAction.ActionType.NEW,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+        // new file ====> new file: both created it, Main's copy overwrites the backup's
+        assertAction(actions, "new2.txt", SyncAction.ActionType.CHANGED,
+                SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
+    }
+
+    @Test
+    void restoreReadsTheWinnerOnTheRightAndTheLoserOnTheLeft() throws IOException {
+        List<SyncAction> actions = twoSidedPart(2);
+        assertEquals(5, actions.size(), actions.toString());
+        assertAction(actions, "adel.txt", SyncAction.ActionType.NEW,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+        // changed <==== deleted: Main's edited file is deleted
+        assertAction(actions, "bdel.txt", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+        assertAction(actions, "d", SyncAction.ActionType.NEW,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+        // chgd dir <==== deleted: Main's changed folder is deleted
+        assertAction(actions, "my d", SyncAction.ActionType.DELETED,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+        assertAction(actions, "new2.txt", SyncAction.ActionType.CHANGED,
+                SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
+    }
+
+    @Test
+    void twoWordDirStateNeverJoinsThePath() {
+        assertEquals(new SyncAction("d", SyncAction.Direction.CONFLICT, SyncAction.ActionType.CONFLICT),
+                only("chgd dir <-?-> deleted    d  "));
+        assertEquals(new SyncAction("x", SyncAction.Direction.CONFLICT, SyncAction.ActionType.CONFLICT),
+                only("changed  <-?-> changed    x  "));
+        assertEquals(new SyncAction("my file.txt", SyncAction.Direction.HDD_TO_LAPTOP,
+                        SyncAction.ActionType.DELETED, SyncAction.Origin.MODE),
+                only("changed  <==== deleted    my file.txt  "));
+    }
+
     @Test
     void existingSampleStillParsesAsUnison() throws IOException {
         try (InputStream in = getClass().getResourceAsStream("/sample-dryrun-output.txt")) {

@@ -1,0 +1,53 @@
+### plain
+Unison 2.53.3 (ocaml 4.14.1): Contacting server...
+Looking for changes
+| bdel.txt          Reconciling changes
+
+laptop         hdd                
+deleted  <-?-> changed    adel.txt  [] No default command [type '?' or F1 for help]
+deleted  <-?-> changed    adel.txt  [] deleted  <-?-> changed    adel.txt  []   deleted  <-?-> changed    adel.txt  
+  changed  <-?-> deleted    bdel.txt  
+  deleted  <-?-> chgd dir   d  
+  chgd dir <-?-> deleted    my d  
+  new file <-?-> new file   new2.txt  
+deleted  <-?-> changed    adel.txt  [] Terminated!
+### force laptop
+Unison 2.53.3 (ocaml 4.14.1): Contacting server...
+Looking for changes
+- bdel.txt          Reconciling changes
+
+laptop         hdd                
+deleted  ====> changed    adel.txt  
+changed  ====> deleted    bdel.txt  
+deleted  ====> chgd dir   d  
+chgd dir ====> deleted    my d  
+new file ====> new file   new2.txt  
+
+5 items will be synced, 0 skipped
+28 B to be synced from laptop to hdd
+0 B to be synced from hdd to laptop
+
+Proceed with propagating updates? [] No default command [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command '0': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command 'L': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Terminated!
+### force hdd
+Unison 2.53.3 (ocaml 4.14.1): Contacting server...
+Looking for changes
+\ bdel.txt          Reconciling changes
+
+laptop         hdd                
+deleted  <==== changed    adel.txt  
+changed  <==== deleted    bdel.txt  
+deleted  <==== chgd dir   d  
+chgd dir <==== deleted    my d  
+new file <==== new file   new2.txt  
+
+5 items will be synced, 0 skipped
+0 B to be synced from laptop to hdd
+29 B to be synced from hdd to laptop
+
+Proceed with propagating updates? [] No default command [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command '0': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Unrecognized command 'L': try again  [type '?' or F1 for help]
+Proceed with propagating updates? [] Terminated!
