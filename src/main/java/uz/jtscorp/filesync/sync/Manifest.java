@@ -34,7 +34,8 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
     /** Anything wrong with the file reads as "no manifest": the caller then just has less to go on. */
     public static Optional<Manifest> read(Path hddRoot) {
         try {
-            List<String> lines = Files.readAllLines(file(hddRoot), StandardCharsets.UTF_8);
+            // Split on \n only: readAllLines would also split on a bare CR, which is legal in a name.
+            List<String> lines = List.of(Files.readString(file(hddRoot), StandardCharsets.UTF_8).split("\n", -1));
             if (lines.isEmpty() || !lines.get(0).equals(FIRST_LINE)) {
                 return Optional.empty();
             }
@@ -119,15 +120,15 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
                 entries.put(path, entry);
             }
         });
-        if (previous.isPresent()) {
-            for (String carried : carryOver) {
-                entries.keySet().removeIf(p -> underOrEqual(p, carried));
-                previous.get().entries().forEach((p, e) -> {
-                    if (underOrEqual(p, carried)) {
-                        entries.put(p, e);
-                    }
-                });
-            }
+        for (String carried : carryOver) {
+            // The walk cannot vouch for a skipped path (same size is not same content), so
+            // it is dropped even when there is no previous record to put back.
+            entries.keySet().removeIf(p -> underOrEqual(p, carried));
+            previous.ifPresent(prev -> prev.entries().forEach((p, e) -> {
+                if (underOrEqual(p, carried)) {
+                    entries.put(p, e);
+                }
+            }));
         }
         return new Manifest(profile, laptopRoot.toString(), host, now, entries);
     }
@@ -190,11 +191,15 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
     }
 
     private static String relative(Path root, Path p) {
-        return root.relativize(p).toString().replace('\\', '/');
+        // Join the name elements: a backslash is an ordinary character in a Linux file name.
+        StringJoiner joined = new StringJoiner("/");
+        root.relativize(p).forEach(part -> joined.add(part.toString()));
+        return joined.toString();
     }
 
     private static String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n");
+        return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")
+                .replace("\r", "\\r");
     }
 
     private static String unescape(String s) {
@@ -212,6 +217,7 @@ public record Manifest(String profile, String laptopRoot, String host, Instant l
                 case '\\' -> sb.append('\\');
                 case 't' -> sb.append('\t');
                 case 'n' -> sb.append('\n');
+                case 'r' -> sb.append('\r');
                 default -> throw new IllegalArgumentException("bad escape");
             }
         }

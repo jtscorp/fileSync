@@ -36,7 +36,8 @@ class ManifestTest {
     @Test
     void roundTripsPathsWithTabNewlineAndBackslash(@TempDir Path hdd) throws IOException {
         Manifest m = sample(Map.of("a\tb", new Manifest.Entry('f', 1), "c\nd", new Manifest.Entry('f', 2),
-                "e\\f", new Manifest.Entry('f', 3)));
+                "e\\f", new Manifest.Entry('f', 3),
+                "a\rb", new Manifest.Entry('f', 4)));
         m.write(hdd);
         assertEquals(m.entries(), Manifest.read(hdd).orElseThrow().entries());
     }
@@ -106,6 +107,45 @@ class ManifestTest {
                 Set.of("uz/ishonch"));
 
         assertEquals(previous.entries(), m.entries());
+    }
+
+    @Test
+    void carriedPathReplacesWalkedIdenticalEntryWithPrevious(@TempDir Path root) throws IOException {
+        Path lap = root.resolve("lap");
+        Path hdd = root.resolve("hdd");
+        file(lap.resolve("c/x.txt"), "abc");
+        file(hdd.resolve("c/x.txt"), "abc");
+        Manifest previous = sample(Map.of("c/x.txt", new Manifest.Entry('f', 99)));
+
+        Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.of(previous), Set.of("c"));
+
+        assertEquals(Map.of("c/x.txt", new Manifest.Entry('f', 99)), m.entries());
+    }
+
+    @Test
+    void carriedPathsAreNeverRecordedFromTheWalk(@TempDir Path root) throws IOException {
+        Path lap = root.resolve("lap");
+        Path hdd = root.resolve("hdd");
+        for (Path side : List.of(lap, hdd)) {
+            file(side.resolve("c/x.txt"), "abc");
+            file(side.resolve("other.txt"), "abc");
+        }
+
+        Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.empty(), Set.of("c"));
+
+        assertEquals(Set.of("other.txt"), m.entries().keySet());
+    }
+
+    @Test
+    void backslashInNameIsNotTurnedIntoSlash(@TempDir Path root) throws IOException {
+        Path lap = root.resolve("lap");
+        Path hdd = root.resolve("hdd");
+        file(lap.resolve("e\\f"), "x");
+        file(hdd.resolve("e\\f"), "x");
+
+        Manifest m = Manifest.capture(lap, hdd, List.of(), "p", "h", NOW, Optional.empty(), Set.of());
+
+        assertEquals(Set.of("e\\f"), m.entries().keySet());
     }
 
     @Test
