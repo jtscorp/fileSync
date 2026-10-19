@@ -939,8 +939,8 @@ public class MainView {
                 ApplyPlan.skipped(gate.skippedPaths(), skippedChanges, actions, lastCheck.renames()),
                 lastCheck.mode());
         // The mode the plan was made under; the .prf hash check below keeps it the profile's.
-        final SyncMode mode = lastCheck.mode();
-        final String forceRoot = forceRoot(mode, profile);
+        final CheckResult checked = lastCheck;
+        final String forceRoot = forceRoot(checked.mode(), profile);
 
         final List<String> phases = new ArrayList<>(List.of(Texts.t("apply.phase.changes")));
         if (!plan.pruneFromHdd().isEmpty()) {
@@ -983,7 +983,7 @@ public class MainView {
                 // -batch, a backup-only file would be copied onto the main side instead.
                 nextPhase();
                 if (forceRoot != null || !plan.pruneFromHdd().isEmpty()) {
-                    requireUnchangedPlan(profile, mode, forceRoot, actions);
+                    requireUnchangedPlan(profile, checked, forceRoot);
                 }
                 UnisonRunner.Result batch = unisonRunner.apply(profile.name(), forceRoot, plan.batchIgnores());
                 StringBuilder output = new StringBuilder(requireSuccess(batch));
@@ -1074,17 +1074,27 @@ public class MainView {
      * A forced run (a mirror mode's batch, a prune) acts on the disks as they are at Apply time:
      * an edit made after the Check would be overwritten or deleted without ever being shown.
      * Re-plans with the same -force and the same reading and refuses, before anything is
-     * transferred, unless every row is what the review showed. A plain two-way run needs none:
+     * transferred, unless it is what the review showed: the same rows, the same listing for
+     * every folder that goes, and the same size and time on both copies of every row. The
+     * rows alone would miss a file added inside a deleted folder, or a later edit to a file
+     * already marked for deleting, since its row reads the same. A plain two-way run needs none:
      * it re-reads both sides itself, and a file changed on both is a conflict, which -batch skips.
      */
-    private void requireUnchangedPlan(SyncProfile profile, SyncMode mode, String forceRoot,
-                                      List<SyncAction> checked) throws IOException, InterruptedException {
+    private void requireUnchangedPlan(SyncProfile profile, CheckResult checked, String forceRoot)
+            throws IOException, InterruptedException {
         UnisonRunner.Result result = unisonRunner.dryRun(profile.name(), forceRoot);
         requireSuccess(result);
-        List<SyncAction> now = PlanInterpreter.interpret(new SyncPlanParser().parse(result.output()), mode,
-                Manifest.read(profile.hddRoot()), profile.laptopRoot(), profile.hddRoot(),
+        List<SyncAction> now = PlanInterpreter.interpret(new SyncPlanParser().parse(result.output()),
+                checked.mode(), Manifest.read(profile.hddRoot()), profile.laptopRoot(), profile.hddRoot(),
                 profile.unisonIgnores()).actions();
-        if (!new HashSet<>(now).equals(new HashSet<>(checked))) {
+        boolean same = new HashSet<>(now).equals(new HashSet<>(checked.actions()))
+                && folderContents(profile, now).equals(checked.folders());
+        for (int i = 0; same && i < now.size(); i++) {
+            String path = now.get(i).relativePath();
+            same = new CheckResult.FilePair(FileDiff.facts(profile.laptopRoot().resolve(path)),
+                    FileDiff.facts(profile.hddRoot().resolve(path))).equals(checked.facts().get(path));
+        }
+        if (!same) {
             throw new IOException(Texts.t("apply.planChanged"));
         }
     }
