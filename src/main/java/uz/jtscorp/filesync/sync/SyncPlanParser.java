@@ -14,13 +14,15 @@ public class SyncPlanParser {
     // A -force run prints "====>" / "<====" for rows where one side is overwritten; the
     // state word then belongs to the side that loses (right column for "====>").
     // The arrow is the anchor. State words are matched loosely because Unison has more
-    // states than a fixed list ("props", "new dir", ...). The lookahead in rightState keeps
-    // it from eating the start of a file name such as "changed.txt".
+    // states than a fixed list ("props", "deleted", ...), but only "new file|dir|link" has two
+    // words; any other state is one word, or a path with a space ("my file.txt") would lose its
+    // first word. A right-hand state sits one space after the arrow (the left one is blank-padded),
+    // and its lookahead keeps it from eating the start of a file name such as "changed.txt".
     // src/test/resources/sample-dryrun-output.txt is a real capture to test changes against.
     private static final Pattern ITEM_LINE = Pattern.compile(
-            "^\\s*(?<leftState>[A-Za-z]+(?:\\s+[A-Za-z]+)?)?\\s*"
-                    + "(?<arrow>---->|<----|<-\\?->|====>|<====)\\s*"
-                    + "(?<rightState>[A-Za-z]+(?:\\s+[A-Za-z]+)?(?=\\s))?\\s*"
+            "^\\s*(?<leftState>new\\s+(?:file|dir|link)|[A-Za-z]+)?\\s*"
+                    + "(?<arrow>---->|<----|<-\\?->|====>|<====)"
+                    + "(?:\\s(?<rightState>new\\s+(?:file|dir|link)|[A-Za-z]+)(?=\\s))?\\s*"
                     + "(?<path>\\S.*\\S|\\S)\\s*$");
 
     // Without a TTY Unison redraws its prompt on the same line, so an item can arrive

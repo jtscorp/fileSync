@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SyncPlanParserTest {
@@ -124,6 +125,7 @@ class SyncPlanParserTest {
     @Test
     void forcedLaptopRowsBecomeDeletesAndOverwritesOnHdd() throws IOException {
         List<SyncAction> actions = forcedPart(0);
+        assertEquals(5, actions.size(), actions.toString());
         assertAction(actions, "bonly.txt", SyncAction.ActionType.DELETED,
                 SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
         assertAction(actions, "edited.txt", SyncAction.ActionType.CHANGED,
@@ -135,6 +137,7 @@ class SyncPlanParserTest {
     @Test
     void forcedHddRowsPointAtTheLaptop() throws IOException {
         List<SyncAction> actions = forcedPart(1);
+        assertEquals(5, actions.size(), actions.toString());
         assertAction(actions, "aonly.txt", SyncAction.ActionType.DELETED,
                 SyncAction.Direction.HDD_TO_LAPTOP, SyncAction.Origin.MODE);
         assertAction(actions, "same.txt", SyncAction.ActionType.NEW,
@@ -148,11 +151,39 @@ class SyncPlanParserTest {
                 SyncAction.Direction.LAPTOP_TO_HDD, SyncAction.Origin.MODE);
     }
 
+    private static SyncAction only(String row) {
+        List<SyncAction> actions = new SyncPlanParser().parse(row + "\n");
+        assertEquals(1, actions.size(), row);
+        return actions.getFirst();
+    }
+
+    @Test
+    void keepsWholePathWhenItContainsSpacesAfterAOneWordState() {
+        assertEquals(new SyncAction("my file.txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                        SyncAction.ActionType.CHANGED, SyncAction.Origin.MODE),
+                only("         ====> changed    my file.txt  "));
+        assertEquals(new SyncAction("old dir", SyncAction.Direction.LAPTOP_TO_HDD,
+                        SyncAction.ActionType.NEW, SyncAction.Origin.MODE),
+                only("         ====> deleted    old dir  "));
+        assertEquals(new SyncAction("a [1].txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                        SyncAction.ActionType.CHANGED, SyncAction.Origin.MODE),
+                only("         ====> changed    a [1].txt  "));
+        assertEquals(new SyncAction("my file.txt", SyncAction.Direction.HDD_TO_LAPTOP,
+                        SyncAction.ActionType.DELETED, SyncAction.Origin.MODE),
+                only("new file <====            my file.txt  "));
+        assertEquals(new SyncAction("my file.txt", SyncAction.Direction.HDD_TO_LAPTOP,
+                        SyncAction.ActionType.CHANGED, SyncAction.Origin.UNISON),
+                only("         <---- changed    my file.txt  "));
+        assertEquals(new SyncAction("my file.txt", SyncAction.Direction.LAPTOP_TO_HDD,
+                        SyncAction.ActionType.CHANGED, SyncAction.Origin.UNISON),
+                only("changed  ---->            my file.txt  "));
+    }
+
     @Test
     void existingSampleStillParsesAsUnison() throws IOException {
         try (InputStream in = getClass().getResourceAsStream("/sample-dryrun-output.txt")) {
             List<SyncAction> actions = new SyncPlanParser().parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-            assertTrue(!actions.isEmpty());
+            assertFalse(actions.isEmpty());
             assertTrue(actions.stream().allMatch(a -> a.origin() == SyncAction.Origin.UNISON));
         }
     }
