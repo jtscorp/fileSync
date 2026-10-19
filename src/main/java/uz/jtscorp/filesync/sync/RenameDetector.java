@@ -3,6 +3,7 @@ package uz.jtscorp.filesync.sync;
 import uz.jtscorp.filesync.sync.PlanInterpreter.Rename;
 import uz.jtscorp.filesync.sync.SyncAction.ActionType;
 import uz.jtscorp.filesync.sync.SyncAction.Direction;
+import uz.jtscorp.filesync.sync.SyncAction.Origin;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,9 +11,12 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /** Display only: a delete and a create in the same direction that hold the same bytes read as one rename. */
 final class RenameDetector {
+
+    private static final IgnoreRules NO_RULES = new IgnoreRules(List.of(), List.of(), List.of());
 
     private RenameDetector() {}
 
@@ -37,8 +41,15 @@ final class RenameDetector {
                     createsByShape.computeIfAbsent(shape, k -> new ArrayList<>()).add(b);
                 }
             }
+            Set<String> forced = actions.stream()
+                    .filter(x -> x.direction() == direction && x.actionType() == ActionType.DELETED
+                            && x.origin() != Origin.UNISON)
+                    .map(SyncAction::relativePath).collect(Collectors.toSet());
             // Quadratic within one size group at worst; it runs in the Check's background task.
             for (String a : deletes) {
+                if (forced.contains(a) && holdsIgnored(target, a, rules)) {
+                    continue;
+                }
                 String shape = shape(target, a, rules, trees);
                 for (String b : shape == null ? List.<String>of() : createsByShape.getOrDefault(shape, List.of())) {
                     // Each path takes part in one rename at most.
@@ -51,6 +62,24 @@ final class RenameDetector {
             }
         }
         return found;
+    }
+
+    /**
+     * A folder that -force deletes takes its ignored files with it (verified on 2.53.3), yet the
+     * rename walk below applies the rules and never sees them. Paired, the row would read as a
+     * harmless rename and the folder's full listing would never be shown, so a folder holding an
+     * ignored entry, or a part that cannot be read, is left as a plain delete.
+     */
+    private static boolean holdsIgnored(Path root, String path, IgnoreRules rules) {
+        if (!Files.isDirectory(root.resolve(path), LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        try {
+            Manifest.Walk all = Manifest.walk(root, path, NO_RULES);
+            return !all.unreadable().isEmpty() || all.below(path).keySet().stream().anyMatch(rules::matches);
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     private static List<String> paths(List<SyncAction> actions, Direction direction, ActionType type) {

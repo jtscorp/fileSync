@@ -344,6 +344,27 @@ class PlanInterpreterTest {
     }
 
     @Test
+    void forcedFolderDeleteHoldingIgnoredFilesIsNeverARename() throws IOException {
+        file(hdd().resolve("old/a.txt"), "a");
+        // -force deletes this with the folder, though the rename walk does not see it
+        file(hdd().resolve("old/debug.log"), "only copy");
+        file(lap().resolve("new/a.txt"), "a");
+        List<String> ignores = List.of("Name *.log");
+        SyncAction create = new SyncAction("new", Direction.LAPTOP_TO_HDD, ActionType.NEW);
+
+        for (Origin origin : List.of(Origin.MODE, Origin.MANIFEST)) {
+            List<SyncAction> parsed = List.of(backupDelete("old", origin), create);
+            assertEquals(List.of(), PlanInterpreter.interpret(parsed, SyncMode.MIRROR_TO_BACKUP, Optional.empty(),
+                    lap(), hdd(), ignores).renames(), origin.toString());
+        }
+        // Without the ignored file the same pair still reads as a rename.
+        Files.delete(hdd().resolve("old/debug.log"));
+        assertEquals(List.of(new Rename("old", "new", Direction.LAPTOP_TO_HDD)),
+                PlanInterpreter.interpret(List.of(backupDelete("old", Origin.MODE), create),
+                        SyncMode.MIRROR_TO_BACKUP, Optional.empty(), lap(), hdd(), ignores).renames());
+    }
+
+    @Test
     void sameSizeDifferentBytesIsNotARename() throws IOException {
         file(hdd().resolve("old-name.txt"), "hello");
         file(lap().resolve("new-name.txt"), "world");
