@@ -8,6 +8,8 @@ import uz.jtscorp.filesync.ui.ApplySummary.Row;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ApplySummaryTest {
 
@@ -76,9 +78,20 @@ class ApplySummaryTest {
 
         assertEquals(List.of(
                 new Row(Mark.DONE, "1 ta o'zgarish o'tkazildi", "a.txt"),
-                new Row(Mark.WARN, "Unison ba'zi elementlarni o'tkazib yubordi — log'ga qarang", "")),
+                new Row(Mark.WARN, "Unison ba'zi elementlarni o'tkazib yubordi — log'ga qarang", ""),
+                new Row(Mark.WARN, "Manifest yangilanmadi: Unison ba'zi fayllarni o'tkazib yubordi.", "")),
                 ApplySummary.rows(actions, none, 1, false, List.of()));
         assertEquals(1, ApplySummary.rows(actions, none, 0, false, List.of()).size());
+    }
+
+    @Test
+    void anUnnamedSkipKeepsTheManifestAsItWas() {
+        // A skipped file we cannot name would be recorded as synced, and the next Check would
+        // read its absence on one side as a delete.
+        assertTrue(ApplySummary.skippedUnnamed(List.of(change("a.txt")), 1));
+        assertFalse(ApplySummary.skippedUnnamed(List.of(change("a.txt")), 0));
+        // With conflicts exit 1 is expected; carryOver keeps each unsettled one.
+        assertFalse(ApplySummary.skippedUnnamed(List.of(change("a.txt"), conflict("c.txt")), 1));
     }
 
     @Test

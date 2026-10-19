@@ -63,9 +63,10 @@ final class ApplySummary {
         if (manifestError != null) {
             rows.add(new Row(Mark.WARN, Texts.t("result.manifestFailed", manifestError), ""));
         }
-        // With conflicts in the plan -batch always exits 1; only without them is it news.
-        if (batchExitCode == 1 && conflicts.isEmpty()) {
+        if (skippedUnnamed(actions, batchExitCode)) {
             rows.add(new Row(Mark.WARN, Texts.t("result.unisonSkipped"), ""));
+            // MainView leaves the manifest alone on the same test.
+            rows.add(new Row(Mark.WARN, Texts.t("result.manifestSkipped"), ""));
         }
         List<String> sidePicked = Stream.concat(plan.laptopWins().stream(), plan.hddWins().stream()).toList();
         if (!sidePicked.isEmpty()) {
@@ -96,6 +97,17 @@ final class ApplySummary {
                     names(plan.skipped())));
         }
         return rows;
+    }
+
+    /**
+     * The plain batch skipped something the plan does not name. With conflicts in the plan
+     * {@code -batch} always exits 1; only without them is it news. The manifest is then not
+     * written: the skipped file would be recorded as synced, and the next Check would read its
+     * absence on one side as a delete.
+     */
+    static boolean skippedUnnamed(List<SyncAction> actions, int batchExitCode) {
+        return batchExitCode == 1
+                && actions.stream().noneMatch(a -> a.actionType() == SyncAction.ActionType.CONFLICT);
     }
 
     private static boolean isDecidedDelete(SyncAction a) {

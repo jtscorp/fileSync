@@ -1029,8 +1029,10 @@ public class MainView {
                     }
                 }
                 // Only reached when every phase ran: a failed one threw above, and a plan that
-                // stopped midway must not be recorded as the last synced state.
-                String manifestError = writeManifest(profile, carryOver(profile, plan, actions));
+                // stopped midway must not be recorded as the last synced state. Nor may a batch
+                // that skipped files we cannot name (the result card says so).
+                String manifestError = ApplySummary.skippedUnnamed(actions, batch.exitCode()) ? null
+                        : writeManifest(profile, carryOver(profile, plan, actions));
                 updateStats(profile.name(), stats -> stats.withLastSync(Instant.now()));
                 return new ApplyResult(output.toString(), warning, batch.exitCode(), unmerged, manifestError);
             }
