@@ -127,10 +127,10 @@
         -fx-effect: dropshadow(gaussian, -fs-acc-35, 14, 0, 0, 5); }
 .app-title { -fx-font-family: "Outfit SemiBold"; -fx-font-size: 16px; }
 .side-label { -fx-font-size: 11.5px; -fx-text-fill: -fs-faint; -fx-padding: 10 16 4 16; }
-.profile-list, .review-list, .diff-list { -fx-background-color: transparent; -fx-background-insets: 0;
-                                          -fx-padding: 0; }
+.profile-list, .review-list, .diff-list, .folder-list { -fx-background-color: transparent;
+                                                        -fx-background-insets: 0; -fx-padding: 0; }
 .profile-list { -fx-padding: 0 8 0 8; }
-.profile-list .list-cell, .review-list .list-cell, .diff-list .list-cell {
+.profile-list .list-cell, .review-list .list-cell, .diff-list .list-cell, .folder-list .list-cell {
     -fx-background-color: transparent; -fx-padding: 0; -fx-text-fill: -fs-text; }
 /* Room around the selected card for its shadow, which a list cell would otherwise clip. */
 .profile-list .list-cell { -fx-padding: 1 4 1 4; }
@@ -192,6 +192,19 @@
 .switch.on { -fx-background-color: -fs-acc; -fx-alignment: center-right; }
 .switch-knob { -fx-min-width: 16; -fx-max-width: 16; -fx-min-height: 16; -fx-max-height: 16;
                -fx-background-radius: 8; -fx-background-color: -fs-knob; }
+/* The sync mode rows. The two forced modes delete and overwrite by design: risk colour. */
+.mode-option { -fx-cursor: hand; -fx-padding: 10 14 10 14; -fx-background-color: -fs-line, -fs-raise;
+               -fx-background-insets: 0, 1; -fx-background-radius: 14, 13; }
+.mode-option:hover { -fx-background-color: -fs-line, -fs-raise, -fs-hover; -fx-background-insets: 0, 1, 1;
+                     -fx-background-radius: 14, 13, 13; }
+.mode-option.on { -fx-background-color: -fs-acc, -fs-raise, -fs-acc-07; -fx-background-insets: 0, 1, 1;
+                  -fx-background-radius: 14, 13, 13; }
+.mode-option.risk .mode-label { -fx-text-fill: -fs-risk; }
+.mode-option.risk.on { -fx-background-color: -fs-risk, -fs-raise, -fs-risk-07; }
+.radio { -fx-min-width: 16; -fx-min-height: 16; -fx-max-width: 16; -fx-max-height: 16;
+         -fx-background-color: -fs-line2, -fs-raise; -fx-background-insets: 0, 1.5; -fx-background-radius: 8; }
+.mode-option.on .radio { -fx-background-color: -fs-acc, -fs-raise, -fs-acc; -fx-background-insets: 0, 1.5, 4.5; }
+.mode-option.risk.on .radio { -fx-background-color: -fs-risk, -fs-raise, -fs-risk; }
 
 /* Check + Apply progress */
 .progress-thin { -fx-min-height: 8; -fx-pref-height: 8; -fx-max-height: 8; }
@@ -354,6 +367,11 @@
 .sign.minus { -fx-text-fill: -fs-risk; }
 .sign.plus { -fx-text-fill: -fs-ok; }
 .hl { -fx-background-color: -fs-warn-42; -fx-background-radius: 2; }
+/* A folder about to be deleted, listed in place of a diff. */
+.folder-list { -fx-fixed-cell-size: 26; }
+.folder-item { -fx-min-height: 26; -fx-padding: 0 16 0 16; -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px;
+               -fx-border-color: -fs-line; -fx-border-width: 0 0 1 0; }
+.folder-item .folder-ignored { -fx-font-family: "Outfit"; }
 .log-box { -fx-font-family: "IBM Plex Mono"; -fx-font-size: 11.5px; }
 .log-box, .log-box .content { -fx-background-color: -fs-side; -fx-background-radius: 8; }
 

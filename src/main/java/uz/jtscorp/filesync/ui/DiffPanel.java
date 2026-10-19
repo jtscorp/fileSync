@@ -78,6 +78,30 @@ final class DiffPanel {
         render();
     }
 
+    /**
+     * A folder about to be deleted: what goes with it, in place of a diff. Virtualized,
+     * because one folder can hold thousands of files; no {@code diff} is run.
+     */
+    void showFolder(String relativePath, SyncAction action, CheckResult.FolderContents folder) {
+        this.relativePath = relativePath;
+        this.action = action;
+        VBox head = new VBox(10, titleBlock());
+        head.getStyleClass().add("detail-head");
+        Label summary = new Label(ReviewText.folderSummary(folder));
+        summary.getStyleClass().add("cmp-size");
+        head.getChildren().add(summary);
+        addActionLine(head);
+
+        ListView<CheckResult.Item> list = new ListView<>(FXCollections.observableArrayList(folder.files()));
+        list.getStyleClass().add("folder-list");
+        list.setFocusTraversable(false);
+        list.setCellFactory(lv -> new FolderItemCell());
+        // An empty folder: the summary above already says so, without JavaFX's own English text.
+        list.setPlaceholder(new Region());
+        VBox.setVgrow(list, Priority.ALWAYS);
+        root.getChildren().setAll(head, list);
+    }
+
     /** Plain text in place of a diff -- used for Unison's raw output. */
     void showText(String title, String text) {
         relativePath = null;
@@ -137,6 +161,17 @@ final class DiffPanel {
     }
 
     private VBox header(FilePair pair) {
+        int newer = ReviewText.newerSide(pair);
+        HBox cards = new HBox(8, card(true, pair.laptop(), newer < 0), card(false, pair.hdd(), newer > 0));
+
+        VBox head = new VBox(10, titleBlock(), cards);
+        head.getStyleClass().add("detail-head");
+        addActionLine(head);
+        return head;
+    }
+
+    /** The badge, the name and the full path of what is on screen. */
+    private VBox titleBlock() {
         ReviewText.PathParts parts = ReviewText.splitPath(relativePath);
         HBox title = new HBox(8);
         title.setAlignment(Pos.CENTER_LEFT);
@@ -149,18 +184,15 @@ final class DiffPanel {
 
         Label path = new Label(relativePath);
         path.getStyleClass().addAll("muted", "small");
+        return new VBox(2, title, path);
+    }
 
-        int newer = ReviewText.newerSide(pair);
-        HBox cards = new HBox(8, card(true, pair.laptop(), newer < 0), card(false, pair.hdd(), newer > 0));
-
-        VBox head = new VBox(10, new VBox(2, title, path), cards);
-        head.getStyleClass().add("detail-head");
+    private void addActionLine(VBox head) {
         if (action != null && action.actionType() != SyncAction.ActionType.CONFLICT) {
             Label line = new Label(ReviewText.actionLine(action));
             line.getStyleClass().addAll("muted", "small");
             head.getChildren().add(line);
         }
-        return head;
     }
 
     static Label badge(SyncAction.ActionType type) {
@@ -283,6 +315,37 @@ final class DiffPanel {
     /** Makes spaces and tabs visible when asked; otherwise a tab is four columns. */
     private String visible(String text) {
         return showWhitespace ? text.replace(' ', '·').replace("\t", "→   ") : text.replace("\t", "    ");
+    }
+
+    /** One file inside a folder about to be deleted; an ignored one goes with the folder too. */
+    private static final class FolderItemCell extends ListCell<CheckResult.Item> {
+
+        @Override
+        protected void updateItem(CheckResult.Item item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setGraphic(null);
+                return;
+            }
+            Label path = new Label(item.path());
+            path.setMinWidth(0);
+            HBox.setHgrow(path, Priority.ALWAYS);
+            path.setMaxWidth(Double.MAX_VALUE);
+            HBox line = new HBox(8, path);
+            if (item.ignored()) {
+                Label tag = new Label(Texts.t("review.folder.ignored"));
+                tag.getStyleClass().addAll("folder-ignored", "faint", "small");
+                tag.setMinWidth(Region.USE_PREF_SIZE);
+                line.getChildren().add(tag);
+            }
+            Label size = new Label(SizeFormat.format(item.size()));
+            size.getStyleClass().addAll("muted", "small");
+            size.setMinWidth(Region.USE_PREF_SIZE);
+            line.getChildren().add(size);
+            line.setAlignment(Pos.CENTER_LEFT);
+            line.getStyleClass().add("folder-item");
+            setGraphic(line);
+        }
     }
 
     private class LineCell extends ListCell<Integer> {

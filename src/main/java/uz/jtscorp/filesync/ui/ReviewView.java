@@ -20,7 +20,9 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.shape.Rectangle;
 
+import uz.jtscorp.filesync.config.SyncMode;
 import uz.jtscorp.filesync.config.SyncProfile;
+import uz.jtscorp.filesync.sync.PlanInterpreter;
 import uz.jtscorp.filesync.sync.SyncAction;
 
 import java.util.ArrayList;
@@ -48,8 +50,13 @@ public class ReviewView {
     private record StatsRow() implements Row {}
     private record RiskHeadRow() implements Row {}
     private record RiskRow(RiskGate.Item item, boolean last) implements Row {}
-    /** {@code first}/{@code last}: where the group's card gets its top and bottom edge. */
-    private record ActionRow(SyncAction action, boolean first, boolean last) implements Row {}
+    /**
+     * {@code first}/{@code last}: where the group's card gets its top and bottom edge.
+     * {@code rename} is set when the row stands for a move; {@code action} is then its
+     * {@code to} row, and that path is what the row's tick and skip act on.
+     */
+    private record ActionRow(SyncAction action, PlanInterpreter.Rename rename, boolean first, boolean last)
+            implements Row {}
     private record EmptyRow() implements Row {}
     /** The changes group's title, with what narrows and orders its rows. */
     private record ChangesHeadRow() implements Row {}
@@ -149,7 +156,7 @@ public class ReviewView {
         // What most needs a look comes up first: a risky file, else a conflict.
         String first = gate.items().stream().filter(RiskGate.Item::isFile).map(RiskGate.Item::path).findFirst()
                 .or(() -> shownConflicts().stream().map(SyncAction::relativePath).findFirst())
-                .or(() -> shownChanges().stream().map(SyncAction::relativePath).findFirst())
+                .or(() -> shownChanges().stream().map(e -> e.action().relativePath()).findFirst())
                 .orElse(null);
         if (first != null) {
             select(first);
@@ -160,9 +167,14 @@ public class ReviewView {
         }
     }
 
-    /** The changes group as the filter and the order leave it. */
-    private List<SyncAction> shownChanges() {
-        return ChangeList.shown(result.changes(), result::factsFor, filter, sort, sortReversed);
+    /** The changes group as the filter and the order leave it; a recognised move is one entry. */
+    private List<ChangeList.Entry> shownChanges() {
+        return ChangeList.shownEntries(result.changes(), result.renames(), result::factsFor, filter, sort,
+                sortReversed);
+    }
+
+    private static List<String> paths(List<ChangeList.Entry> entries) {
+        return entries.stream().map(e -> e.action().relativePath()).toList();
     }
 
     /** A skipped conflict is left alone whatever was picked for it, so it counts as undecided. */
@@ -206,7 +218,8 @@ public class ReviewView {
         if (!conflicts.isEmpty()) {
             rows.add(new ConflictsHeadRow());
             rows.add(new ConflictBulkRow());
-            addCard(rows, shownConflicts(), Texts.t("review.conflictFilterEmpty"));
+            addCard(rows, shownConflicts().stream().map(a -> new ChangeList.Entry(a, null)).toList(),
+                    Texts.t("review.conflictFilterEmpty"));
         }
         if (!result.changes().isEmpty()) {
             rows.add(new ChangesHeadRow());
@@ -220,9 +233,10 @@ public class ReviewView {
     }
 
     /** The bulk bar is the card's top edge, so no row is ever the first. */
-    private static void addCard(List<Row> rows, List<SyncAction> shown, String emptyText) {
+    private static void addCard(List<Row> rows, List<ChangeList.Entry> shown, String emptyText) {
         for (int i = 0; i < shown.size(); i++) {
-            rows.add(new ActionRow(shown.get(i), false, i == shown.size() - 1));
+            ChangeList.Entry entry = shown.get(i);
+            rows.add(new ActionRow(entry.action(), entry.rename(), false, i == shown.size() - 1));
         }
         if (shown.isEmpty()) {
             rows.add(new FilterEmptyRow(emptyText));
@@ -249,14 +263,26 @@ public class ReviewView {
             return;
         }
         selectedPath = path;
-        diffPanel.showFile(path, result.actionFor(path).orElse(null),
-                profile.laptopRoot().resolve(path), profile.hddRoot().resolve(path));
+        CheckResult.FolderContents folder = result.folders().get(path);
+        if (folder != null) {
+            // A folder has no diff; what goes with it is the thing to look at.
+            diffPanel.showFolder(path, result.actionFor(path).orElse(null), folder);
+        } else {
+            diffPanel.showFile(path, result.actionFor(path).orElse(null),
+                    profile.laptopRoot().resolve(path), profile.hddRoot().resolve(path));
+        }
         refresh();
     }
 
     /** Left out of this Apply: a risky file at the gate, an ordinary change in the list. */
     private boolean isSkipped(String path) {
         return gate.isSkipped(path) || skippedChanges.contains(path);
+    }
+
+    /** A move's {@code from} row is hidden and goes with its {@code to} row's skip. */
+    private boolean isLeftOut(String path) {
+        return isSkipped(path) || result.renames().stream()
+                .anyMatch(r -> r.from().equals(path) && isSkipped(r.to()));
     }
 
     /** A file the scanner flagged keeps its skip in the gate, where it also counts as decided. */
@@ -286,7 +312,7 @@ public class ReviewView {
         reviewList.refresh();
         int conflicts = result.conflicts().size();
         int resolved = resolvedCount();
-        int moving = (int) result.changes().stream().filter(a -> !isSkipped(a.relativePath())).count();
+        int moving = (int) result.changes().stream().filter(a -> !isLeftOut(a.relativePath())).count();
         summaryLabel.setText(ReviewText.applySummary(moving, resolved, conflicts - resolved));
         gateLabel.setText(ReviewText.gateText(gate.pendingCount()));
         applyButton.setDisable(!gate.allAcknowledged());
@@ -376,8 +402,15 @@ public class ReviewView {
             column.setPercentWidth(25);
             grid.getColumnConstraints().add(column);
         }
-        VBox box = new VBox(grid);
+        VBox box = new VBox(10, grid);
         box.getStyleClass().add("stats-row");
+        if (!result.manifestFound() && result.mode() == SyncMode.TWO_WAY) {
+            // The backup's manifest is what tells a file deleted on the main side from one that
+            // is new on the backup; without it the plan cannot, and the reader should know.
+            Label note = label(Texts.t("review.noManifest"), "muted", "small");
+            note.setWrapText(true);
+            box.getChildren().add(note);
+        }
         return box;
     }
 
@@ -593,8 +626,8 @@ public class ReviewView {
     }
 
     /** The ticked rows still on screen; a tick the filter has hidden is not acted on. */
-    private static List<String> pickedShown(List<SyncAction> shown, Set<String> ticks) {
-        return shown.stream().map(SyncAction::relativePath).filter(ticks::contains).toList();
+    private static List<String> pickedShown(List<String> shown, Set<String> ticks) {
+        return shown.stream().filter(ticks::contains).toList();
     }
 
     private static Label checkBox(String mark) {
@@ -606,7 +639,7 @@ public class ReviewView {
     }
 
     private Node bulkRow() {
-        return bulkBar(shownChanges(), picked, ticked -> {
+        return bulkBar(paths(shownChanges()), picked, ticked -> {
             Button skip = bulkButton(Texts.t("review.skip"), "btn");
             skip.setOnAction(e -> {
                 ticked.forEach(path -> setSkipped(path, true));
@@ -630,10 +663,11 @@ public class ReviewView {
      * over the files it may not touch without saying so.
      */
     private Node conflictBulkRow() {
-        return bulkBar(shownConflicts(), pickedConflicts, ticked -> List.of(
-                keepButton(Texts.t("review.bulkKeepLaptop"), ticked, Resolution.LAPTOP),
-                keepButton(Texts.t("review.bulkKeepHdd"), ticked, Resolution.HDD),
-                keepButton(Resolution.SKIP.label(), ticked, Resolution.SKIP)));
+        return bulkBar(shownConflicts().stream().map(SyncAction::relativePath).toList(), pickedConflicts,
+                ticked -> List.of(
+                        keepButton(Texts.t("review.bulkKeepLaptop"), ticked, Resolution.LAPTOP),
+                        keepButton(Texts.t("review.bulkKeepHdd"), ticked, Resolution.HDD),
+                        keepButton(Resolution.SKIP.label(), ticked, Resolution.SKIP)));
     }
 
     private Button keepButton(String text, List<String> ticked, Resolution resolution) {
@@ -647,9 +681,8 @@ public class ReviewView {
     }
 
     /** @param actions the buttons for the ticked rows still on screen; drawn only while there are some */
-    private HBox bulkBar(List<SyncAction> shownRows, Set<String> ticks, Function<List<String>, List<Button>> actions) {
-        List<String> shown = shownRows.stream().map(SyncAction::relativePath).toList();
-        List<String> ticked = pickedShown(shownRows, ticks);
+    private HBox bulkBar(List<String> shown, Set<String> ticks, Function<List<String>, List<Button>> actions) {
+        List<String> ticked = pickedShown(shown, ticks);
         boolean all = !shown.isEmpty() && ticked.size() == shown.size();
 
         Label box = checkBox(all ? "✓" : ticked.isEmpty() ? "" : "–");
@@ -708,8 +741,11 @@ public class ReviewView {
         String path = action.relativePath();
         ReviewText.PathParts parts = ReviewText.splitPath(path);
 
-        HBox name = new HBox(label(parts.dir(), "path-dir"), label(parts.name(), "path-name"));
-        name.setAlignment(Pos.CENTER_LEFT);
+        HBox pathLine = new HBox(label(parts.dir(), "path-dir"), label(parts.name(), "path-name"));
+        pathLine.setAlignment(Pos.CENTER_LEFT);
+        pathLine.setMinWidth(0);
+        VBox name = new VBox(2, pathLine);
+        name.getChildren().addAll(rowDetails(path, item.rename()));
         name.setMinWidth(0);
         HBox.setHgrow(name, Priority.ALWAYS);
 
@@ -760,6 +796,29 @@ public class ReviewView {
                                     "dir-" + tone(ChangeList.Filter.of(action))));
         }
         return row;
+    }
+
+    /** The muted lines under a row's path: what a move was, what a folder holds, the plan's note. */
+    private List<Label> rowDetails(String path, PlanInterpreter.Rename rename) {
+        List<Label> lines = new ArrayList<>();
+        if (rename != null) {
+            lines.add(label(ReviewText.rename(rename), "muted", "small"));
+        }
+        CheckResult.FolderContents folder = result.folders().get(path);
+        if (folder != null) {
+            lines.add(label(ReviewText.folderSummary(folder), "muted", "small"));
+        }
+        // A move's from row is hidden, so its note is shown here or nowhere.
+        List<String> notePaths = rename == null ? List.of(path) : List.of(rename.from(), path);
+        for (String notePath : notePaths) {
+            String note = result.notes().get(notePath);
+            if (note != null) {
+                lines.add(label(note, "muted", "small"));
+            }
+        }
+        // Wrapped, not cut: the row keeps the list's width and a note is read to decide.
+        lines.forEach(line -> line.setWrapText(true));
+        return lines;
     }
 
     private Node resolutionPicker(String path) {

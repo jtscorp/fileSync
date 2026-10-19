@@ -15,9 +15,13 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 
+import uz.jtscorp.filesync.config.SyncMode;
 import uz.jtscorp.filesync.config.SyncProfile;
 
 import java.io.File;
@@ -50,6 +54,7 @@ public class SetupView {
     @FXML private FlowPane chipsPane;
     @FXML private FlowPane suggestionsPane;
     @FXML private StackPane mergeSwitch;
+    @FXML private VBox modeOptions;
     @FXML private Label syncHintLabel;
     @FXML private Label statusLabel;
     @FXML private Button detailsButton;
@@ -58,6 +63,7 @@ public class SetupView {
     private final ObservableList<String> ignorePatterns = FXCollections.observableArrayList();
     private Listener listener;
     private boolean keepMergeBackups;
+    private SyncMode mode = SyncMode.TWO_WAY;
     private boolean dirty;
     /** Set while {@link #show} fills the form, so loading a profile does not count as editing it. */
     private boolean loading;
@@ -73,6 +79,7 @@ public class SetupView {
             edited();
         });
         renderIgnoreRules();
+        renderModes();
         refreshFooter();
     }
 
@@ -88,12 +95,14 @@ public class SetupView {
         hddPathField.setText(profile.hddRoot().toString());
         ignorePatterns.setAll(profile.ignorePatterns());
         keepMergeBackups = profile.keepMergeBackups();
+        mode = profile.mode();
         newIgnorePatternField.clear();
         loading = false;
         dirty = false;
         error = null;
         errorDetails = null;
         renderSwitch();
+        renderModes();
         refreshFooter();
     }
 
@@ -103,7 +112,7 @@ public class SetupView {
 
     SyncProfile read(String name) {
         return new SyncProfile(name, Path.of(laptopPathField.getText().strip()),
-                Path.of(hddPathField.getText().strip()), List.copyOf(ignorePatterns), keepMergeBackups);
+                Path.of(hddPathField.getText().strip()), List.copyOf(ignorePatterns), keepMergeBackups, mode);
     }
 
     void markSaved() {
@@ -150,6 +159,47 @@ public class SetupView {
         if (keepMergeBackups) {
             mergeSwitch.getStyleClass().add("on");
         }
+    }
+
+    /**
+     * One row per mode, built here rather than in FXML so the rows need no native-image
+     * reflection entries. The two forced modes delete and overwrite by design, so they
+     * are drawn in the risk colour.
+     */
+    private void renderModes() {
+        List<Node> rows = new ArrayList<>();
+        for (SyncMode option : SyncMode.values()) {
+            Region radio = new Region();
+            radio.getStyleClass().add("radio");
+            Label title = new Label(option.label());
+            title.getStyleClass().addAll("mode-label", "w500");
+            Label hint = new Label(option.hint());
+            hint.setWrapText(true);
+            hint.getStyleClass().addAll("muted", "small");
+            VBox text = new VBox(2, title, hint);
+            HBox.setHgrow(text, Priority.ALWAYS);
+            HBox row = new HBox(12, radio, text);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.getStyleClass().add("mode-option");
+            if (option.forced()) {
+                row.getStyleClass().add("risk");
+            }
+            if (option == mode) {
+                row.getStyleClass().add("on");
+            }
+            row.setOnMouseClicked(e -> pickMode(option));
+            rows.add(row);
+        }
+        modeOptions.getChildren().setAll(rows);
+    }
+
+    private void pickMode(SyncMode option) {
+        if (option == mode) {
+            return;
+        }
+        mode = option;
+        renderModes();
+        edited();
     }
 
     private void renderIgnoreRules() {

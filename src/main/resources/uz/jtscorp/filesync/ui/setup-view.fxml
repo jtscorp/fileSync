@@ -53,6 +53,12 @@
                     </GridPane>
                 </VBox>
 
+                <!-- The four option rows are built in SetupView: each is a mode's label and hint. -->
+                <VBox spacing="12" styleClass="card">
+                    <Label text="%setup.mode.title" styleClass="card-title"/>
+                    <VBox fx:id="modeOptions" spacing="6"/>
+                </VBox>
+
                 <VBox spacing="12" styleClass="card">
                     <HBox spacing="10" alignment="BASELINE_LEFT">
                         <Label text="%setup.ignored" styleClass="card-title"/>
