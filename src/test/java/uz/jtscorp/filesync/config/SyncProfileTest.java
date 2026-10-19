@@ -131,4 +131,57 @@ class SyncProfileTest {
         assertFalse(Files.readString(prfFile).contains("backupcurrent"));
         assertFalse(SyncProfile.readFrom("Merge", prfFile).keepMergeBackups());
     }
+
+    private SyncProfile withMode(SyncMode mode, List<String> ignores) {
+        return new SyncProfile("P", Path.of("/a"), Path.of("/b"), ignores, false, mode);
+    }
+
+    @Test
+    void roundTripsEachMode() throws Exception {
+        for (SyncMode mode : SyncMode.values()) {
+            Path prf = tempDir.resolve(mode.prfValue() + ".prf");
+            withMode(mode, List.of()).writeTo(prf);
+            assertEquals(mode, SyncProfile.readFrom("P", prf).mode());
+        }
+    }
+
+    @Test
+    void missingOrUnknownModeReadsAsTwoWay() throws Exception {
+        Path none = tempDir.resolve("none.prf");
+        Files.writeString(none, "root = /a\nroot = /b\n");
+        assertEquals(SyncMode.TWO_WAY, SyncProfile.readFrom("P", none).mode());
+        Path odd = tempDir.resolve("odd.prf");
+        Files.writeString(odd, "root = /a\nroot = /b\n# filesync-mode = sideways\n");
+        assertEquals(SyncMode.TWO_WAY, SyncProfile.readFrom("P", odd).mode());
+    }
+
+    @Test
+    void writesTheModeLineVerbatim() throws Exception {
+        Path prf = tempDir.resolve("v.prf");
+        withMode(SyncMode.TWO_WAY_PRUNE, List.of()).writeTo(prf);
+        assertTrue(Files.readString(prf).contains("# filesync-mode = two-way-prune\n"));
+    }
+
+    @Test
+    void alwaysWritesManifestIgnoreButNeverListsIt() throws Exception {
+        Path prf = tempDir.resolve("m.prf");
+        SyncProfile p = withMode(SyncMode.TWO_WAY, List.of("Name *.tmp", "Path .filesync"));
+        p.writeTo(prf);
+        String text = Files.readString(prf);
+        String line = "ignore = Path .filesync\n";
+        assertEquals(text.indexOf(line), text.lastIndexOf(line));
+        assertTrue(text.contains(line));
+        SyncProfile loaded = SyncProfile.readFrom("P", prf);
+        assertFalse(loaded.ignorePatterns().contains("Path .filesync"));
+        assertEquals("Path .filesync", loaded.unisonIgnores().getLast());
+    }
+
+    @Test
+    void modeChangeChangesTheFileBytes() throws Exception {
+        Path a = tempDir.resolve("a.prf");
+        Path b = tempDir.resolve("b.prf");
+        withMode(SyncMode.TWO_WAY, List.of()).writeTo(a);
+        withMode(SyncMode.MIRROR_TO_BACKUP, List.of()).writeTo(b);
+        assertFalse(java.util.Arrays.equals(Files.readAllBytes(a), Files.readAllBytes(b)));
+    }
 }

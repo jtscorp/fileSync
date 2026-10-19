@@ -11,11 +11,28 @@ import java.util.ArrayList;
 import java.util.List;
 
 public record SyncProfile(String name, Path laptopRoot, Path hddRoot, List<String> ignorePatterns,
-                          boolean keepMergeBackups) {
+                          boolean keepMergeBackups, SyncMode mode) {
+
+    /** The backup side's manifest folder; Unison must never sync it, so every written .prf ignores it. */
+    public static final String MANIFEST_IGNORE = "Path .filesync";
+
+    private static final String MODE_PREFIX = "# filesync-mode =";
+
+    public SyncProfile(String name, Path laptopRoot, Path hddRoot, List<String> ignorePatterns,
+                       boolean keepMergeBackups) {
+        this(name, laptopRoot, hddRoot, ignorePatterns, keepMergeBackups, SyncMode.TWO_WAY);
+    }
 
     /** A profile that keeps no backups -- the default for everything but an explicit opt-in. */
     public SyncProfile(String name, Path laptopRoot, Path hddRoot, List<String> ignorePatterns) {
         this(name, laptopRoot, hddRoot, ignorePatterns, false);
+    }
+
+    /** What Unison and the scanners obey: the user's rules plus the manifest folder. */
+    public List<String> unisonIgnores() {
+        List<String> all = new ArrayList<>(ignorePatterns);
+        all.add(MANIFEST_IGNORE);
+        return all;
     }
 
     /** Keeps letters and digits of any script. No leading dash: Unison would read the name as an option. */
@@ -47,14 +64,21 @@ public record SyncProfile(String name, Path laptopRoot, Path hddRoot, List<Strin
         List<Path> roots = new ArrayList<>();
         List<String> ignores = new ArrayList<>();
         boolean keepMergeBackups = false;
+        SyncMode mode = SyncMode.TWO_WAY;
         for (String line : Files.readAllLines(prfFile, StandardCharsets.UTF_8)) {
             String trimmed = line.strip();
             // No trailing space in the prefixes: a new profile's empty root is
             // written as "root = " and strip() has already eaten that space.
             if (trimmed.startsWith("root =")) {
                 roots.add(Path.of(trimmed.substring("root =".length()).strip()));
+            } else if (trimmed.startsWith(MODE_PREFIX)) {
+                mode = SyncMode.fromPrf(trimmed.substring(MODE_PREFIX.length()));
             } else if (trimmed.startsWith("ignore =")) {
-                ignores.add(trimmed.substring("ignore =".length()).strip());
+                // Written on every save, so it is not the user's rule and must not show in the form.
+                String rule = trimmed.substring("ignore =".length()).strip();
+                if (!rule.equals(MANIFEST_IGNORE)) {
+                    ignores.add(rule);
+                }
             } else if (trimmed.startsWith("backupcurrent =")) {
                 // Any non-blank rule counts: the UI writes "Name *", but a profile
                 // hand-edited to back up a narrower set still supports merging.
@@ -64,16 +88,20 @@ public record SyncProfile(String name, Path laptopRoot, Path hddRoot, List<Strin
         if (roots.size() != 2) {
             throw new NotASyncProfile(Texts.t("profile.badRoots", prfFile));
         }
-        return new SyncProfile(name, roots.get(0), roots.get(1), ignores, keepMergeBackups);
+        return new SyncProfile(name, roots.get(0), roots.get(1), ignores, keepMergeBackups, mode);
     }
 
     public void writeTo(Path prfFile) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("root = ").append(laptopRoot).append('\n');
         sb.append("root = ").append(hddRoot).append('\n');
+        sb.append(MODE_PREFIX).append(' ').append(mode.prfValue()).append('\n');
         for (String pattern : ignorePatterns) {
-            sb.append("ignore = ").append(pattern).append('\n');
+            if (!pattern.strip().equals(MANIFEST_IGNORE)) {
+                sb.append("ignore = ").append(pattern).append('\n');
+            }
         }
+        sb.append("ignore = ").append(MANIFEST_IGNORE).append('\n');
         if (keepMergeBackups) {
             // Merging needs a copy of the last synced version, and Unison only keeps one
             // when the profile says so before the conflict appears.
