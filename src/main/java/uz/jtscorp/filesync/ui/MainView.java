@@ -38,6 +38,9 @@ import uz.jtscorp.filesync.config.ProfileStore;
 import uz.jtscorp.filesync.config.SyncProfile;
 import uz.jtscorp.filesync.config.SyncMode;
 import uz.jtscorp.filesync.sync.FileDiff;
+import uz.jtscorp.filesync.sync.FolderWalk;
+import uz.jtscorp.filesync.sync.Manifest;
+import uz.jtscorp.filesync.sync.PlanInterpreter;
 import uz.jtscorp.filesync.sync.RiskFlag;
 import uz.jtscorp.filesync.sync.RiskScanner;
 import uz.jtscorp.filesync.sync.SyncAction;
@@ -49,6 +52,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalTime;
@@ -142,9 +146,11 @@ public class MainView {
     /**
      * Apply's output plus, when a phase failed without invalidating the rest, why.
      *
-     * @param unmerged the merge paths whose two copies still differ after the merge run
+     * @param unmerged      the merge paths whose two copies still differ after the merge run
+     * @param manifestError why the backup's manifest could not be written, or null
      */
-    private record ApplyResult(String output, String warning, int batchExitCode, List<String> unmerged) {}
+    private record ApplyResult(String output, String warning, int batchExitCode, List<String> unmerged,
+                               String manifestError) {}
 
     /**
      * The files a merge left untouched. Lets "keep this side" run without a new check,
@@ -191,6 +197,101 @@ public class MainView {
             }
         }
         return different;
+    }
+
+    /** The root a mirror mode forces for its whole run; null for the two-way modes. */
+    private static String forceRoot(SyncMode mode, SyncProfile profile) {
+        return switch (mode) {
+            case MIRROR_TO_BACKUP -> profile.laptopRoot().toString();
+            case RESTORE_FROM_BACKUP -> profile.hddRoot().toString();
+            case TWO_WAY, TWO_WAY_PRUNE -> null;
+        };
+    }
+
+    /**
+     * What each folder that is about to be deleted or force-overwritten holds, read on the
+     * side that gets written. Ignored files are listed too: Unison deletes them with the folder.
+     */
+    private static Map<String, CheckResult.FolderContents> folderContents(SyncProfile profile,
+                                                                         List<SyncAction> actions) throws IOException {
+        Map<String, CheckResult.FolderContents> folders = new HashMap<>();
+        for (SyncAction action : actions) {
+            boolean overwrites = action.actionType() == SyncAction.ActionType.CHANGED
+                    && action.origin() == SyncAction.Origin.MODE;
+            if (action.actionType() != SyncAction.ActionType.DELETED && !overwrites) {
+                continue;
+            }
+            Path written = action.direction() == SyncAction.Direction.LAPTOP_TO_HDD
+                    ? profile.hddRoot() : profile.laptopRoot();
+            String folder = action.relativePath();
+            if (!Files.isDirectory(written.resolve(folder), LinkOption.NOFOLLOW_LINKS)) {
+                continue;
+            }
+            List<CheckResult.Item> files = new ArrayList<>();
+            long bytes = 0;
+            for (FolderWalk.Item item : FolderWalk.contents(written, folder, profile.unisonIgnores())) {
+                // The review lists them relative to the folder they are in.
+                files.add(new CheckResult.Item(item.path().substring(folder.length() + 1), item.size(),
+                        item.ignored()));
+                bytes += item.size();
+            }
+            folders.put(folder, new CheckResult.FolderContents(List.copyOf(files), bytes));
+        }
+        return folders;
+    }
+
+    /**
+     * Files the sync mode or the manifest makes Apply delete ({@code DELETED}) or overwrite
+     * ({@code CHANGED}); Unison's own rows are not counted. A folder counts its files, and at
+     * least one: a folder whose contents could not be listed must still reach the gate.
+     */
+    private static int irreversible(CheckResult result, SyncAction.ActionType type) {
+        int count = 0;
+        for (SyncAction action : result.actions()) {
+            boolean decided = action.origin() == SyncAction.Origin.MODE
+                    || action.origin() == SyncAction.Origin.MANIFEST;
+            if (decided && action.actionType() == type) {
+                CheckResult.FolderContents folder = result.folders().get(action.relativePath());
+                count += folder == null ? 1 : Math.max(1, folder.files().size());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Records the two sides as they now are, for the next Check to tell a delete on the main
+     * side from a new backup file. Failing to write it (a read-only backup, say) only costs
+     * that Check its evidence, so it must never fail the Check or Apply it follows.
+     *
+     * @param carryOver paths this sync left as they were; their previous record is kept
+     * @return why it could not be written, or null
+     */
+    private static String writeManifest(SyncProfile profile, Set<String> carryOver) {
+        try {
+            Manifest.capture(profile.laptopRoot(), profile.hddRoot(), profile.unisonIgnores(), profile.name(),
+                    Manifest.localHost(), Instant.now(), Manifest.read(profile.hddRoot()), carryOver)
+                    .write(profile.hddRoot());
+            return null;
+        } catch (IOException | RuntimeException e) {
+            return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        }
+    }
+
+    /**
+     * What the manifest must not take from the walk: skipped files, and every conflict that no
+     * run settled (left alone, or merged without success). Their two copies may differ.
+     */
+    private static Set<String> carryOver(ApplyPlan plan, List<SyncAction> actions, List<String> unmerged) {
+        Set<String> carried = new HashSet<>(plan.skipped());
+        for (SyncAction action : actions) {
+            String path = action.relativePath();
+            boolean settled = plan.laptopWins().contains(path) || plan.hddWins().contains(path)
+                    || (plan.merges().contains(path) && !unmerged.contains(path));
+            if (action.actionType() == SyncAction.ActionType.CONFLICT && !settled) {
+                carried.add(path);
+            }
+        }
+        return carried;
     }
 
     private static boolean isConfigured(SyncProfile profile) {
@@ -692,18 +793,29 @@ public class MainView {
             @Override
             protected CheckResult call() throws Exception {
                 byte[] prfHash = hashFile(profileStore.profileFilePath(profile.name()));
-                UnisonRunner.Result result = unisonRunner.dryRun(profile.name());
+                List<String> ignores = profile.unisonIgnores();
+                // A mirror mode's plan is made with the same -force its Apply will use, so
+                // the review shows what will really happen.
+                UnisonRunner.Result result = unisonRunner.dryRun(profile.name(), forceRoot(profile.mode(), profile));
                 // Codes normalized by UnisonRunner.dryRunExitCode: 0 = clean, 1 = some
                 // items skipped (conflicts are expected and shown as rows; anything else
                 // becomes a gate item, see RiskGate.from), 2 = the dry run did not
                 // complete cleanly (wrong Unison version, unreadable root, ...).
                 requireSuccess(result);
-                List<SyncAction> actions = new SyncPlanParser().parse(result.output());
+                List<SyncAction> parsed = new SyncPlanParser().parse(result.output());
+                Optional<Manifest> manifest = Manifest.read(profile.hddRoot());
+                // Unfiltered: the interpreter itself refuses another machine's or folder's manifest.
+                PlanInterpreter.Interpretation interpreted = PlanInterpreter.interpret(parsed, profile.mode(),
+                        manifest, profile.laptopRoot(), profile.hddRoot(), ignores);
+                // From here on the interpreted rows are the plan: ApplyPlan needs their origins.
+                List<SyncAction> actions = interpreted.actions();
+                boolean manifestFound = manifest
+                        .filter(m -> m.belongsTo(profile.laptopRoot().toString(), Manifest.localHost())).isPresent();
                 stageDone(0, Texts.n("check.found", actions.size()));
 
-                RiskScanner.Scan scan = riskScanner.scanWithTotals(
-                        profile.laptopRoot(), profile.hddRoot(), profile.ignorePatterns());
-                List<RiskFlag> risks = scan.flags();
+                RiskScanner.Scan scan = riskScanner.scanWithTotals(profile.laptopRoot(), profile.hddRoot(), ignores);
+                List<RiskFlag> risks = new ArrayList<>(scan.flags());
+                risks.addAll(interpreted.flags());
                 updateStats(profile.name(), stats -> stats.withCounts(scan.laptopFiles(), scan.laptopBytes()));
                 long riskyFiles = risks.stream().filter(f -> f.scope() == RiskFlag.Scope.FILE).count();
                 stageDone(1, Texts.n("check.risky", riskyFiles));
@@ -735,11 +847,21 @@ public class MainView {
                 // Without the backups Unison has no common ancestor and the merge run
                 // fails outright, so nothing is mergeable however textual it is.
                 int offered = profile.keepMergeBackups() ? mergeable.size() : 0;
-                stageDone(2, Texts.t("check.conflicts", conflicts, offered));
+                Map<String, CheckResult.FolderContents> folders = folderContents(profile, actions);
+                String stage = Texts.t("check.conflicts", conflicts, offered);
+                // Nothing to sync and nothing suspicious: both sides are the same, so this is a
+                // last synced state too. Without it a profile already in sync never gets a manifest.
+                if (result.exitCode() == 0 && actions.isEmpty() && riskyFiles == 0) {
+                    String manifestError = writeManifest(profile, Set.of());
+                    if (manifestError != null) {
+                        stage += " · " + Texts.t("check.manifestFailed", manifestError);
+                    }
+                }
+                stageDone(2, stage);
 
                 return new CheckResult(actions, risks, result.output(), prfHash, mergeable,
-                        result.exitCode(), facts, SyncMode.TWO_WAY, java.util.Map.of(), java.util.List.of(),
-                        java.util.Map.of(), true);
+                        result.exitCode(), facts, profile.mode(), interpreted.notes(), interpreted.renames(),
+                        folders, manifestFound);
             }
 
             private void stageDone(int index, String text) {
@@ -775,7 +897,9 @@ public class MainView {
         skippedChanges.clear();
         mergeablePaths.clear();
         mergeablePaths.addAll(result.mergeablePaths());
-        gate = RiskGate.from(result.risks(), result.exitCode(), !result.conflicts().isEmpty());
+        gate = RiskGate.from(result.risks(), result.exitCode(), !result.conflicts().isEmpty(),
+                irreversible(result, SyncAction.ActionType.DELETED),
+                irreversible(result, SyncAction.ActionType.CHANGED));
         // Not yet probed counts as found: the merge run itself fails safely without diff3.
         reviewViewController.show(profile, result, gate,
                 tools == null || tools.found(ToolCheck.Tool.DIFF3));
@@ -805,9 +929,15 @@ public class MainView {
         final byte[] expectedHash = lastCheckedPrfHash;
         final ApplyPlan plan = ApplyPlan.from(conflictResolutions, actions, mergeablePaths,
                 profile.keepMergeBackups(),
-                ApplyPlan.skipped(gate.skippedPaths(), skippedChanges, actions));
+                ApplyPlan.skipped(gate.skippedPaths(), skippedChanges, actions, lastCheck.renames()),
+                lastCheck.mode());
+        // The mode the plan was made under; the .prf hash check below keeps it the profile's.
+        final String forceRoot = forceRoot(lastCheck.mode(), profile);
 
         final List<String> phases = new ArrayList<>(List.of(Texts.t("apply.phase.changes")));
+        if (!plan.pruneFromHdd().isEmpty()) {
+            phases.add(Texts.t("apply.phase.prune"));
+        }
         if (!plan.laptopWins().isEmpty()) {
             phases.add(Texts.t("apply.phase.laptop"));
         }
@@ -841,9 +971,20 @@ public class MainView {
                 // Plain -batch first: it propagates everything that isn't a conflict and
                 // leaves conflicts untouched. Each resolved side then gets one scoped run,
                 // so twenty conflicts still cost at most two extra Unison processes.
+                // A mirror mode forces the whole batch. The prunes are ignored in it: left to
+                // -batch, a backup-only file would be copied onto the main side instead.
                 nextPhase();
-                UnisonRunner.Result batch = unisonRunner.apply(profile.name(), plan.skipped());
+                UnisonRunner.Result batch = unisonRunner.apply(profile.name(), forceRoot, plan.batchIgnores());
                 StringBuilder output = new StringBuilder(requireSuccess(batch));
+                if (!plan.pruneFromHdd().isEmpty()) {
+                    nextPhase();
+                    // -force with the main side, scoped by -path to the prunes alone: the main
+                    // side lacks them, so forcing it deletes them from the backup.
+                    output.append("\n" + Texts.t("apply.log.prune") + "\n").append(requireSuccess(
+                            unisonRunner.applyForcing(profile.name(), profile.laptopRoot().toString(),
+                                    plan.pruneFromHdd(), plan.skipped()),
+                            output));
+                }
                 if (!plan.laptopWins().isEmpty()) {
                     nextPhase();
                     output.append("\n" + Texts.t("apply.log.laptop") + "\n").append(requireSuccess(
@@ -876,8 +1017,11 @@ public class MainView {
                                 ? Texts.t("apply.mergeError") : Texts.t("apply.mergeOverlap");
                     }
                 }
+                // Only reached when every phase ran: a failed one threw above, and a plan that
+                // stopped midway must not be recorded as the last synced state.
+                String manifestError = writeManifest(profile, carryOver(plan, actions, unmerged));
                 updateStats(profile.name(), stats -> stats.withLastSync(Instant.now()));
-                return new ApplyResult(output.toString(), warning, batch.exitCode(), unmerged);
+                return new ApplyResult(output.toString(), warning, batch.exitCode(), unmerged, manifestError);
             }
         };
         task.setOnSucceeded(e -> {
@@ -892,7 +1036,7 @@ public class MainView {
                     : new MergeLeftover(profile, expectedHash, new HashSet<>(result.unmerged()));
             applyViewController.showDone(subline,
                     ApplySummary.rows(actions, plan, result.batchExitCode(), result.warning() != null,
-                            result.unmerged()),
+                            result.unmerged(), result.manifestError()),
                     result.warning(), result.unmerged(), result.output());
             refreshProfileList();
             updateStepper();
